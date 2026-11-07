@@ -20,7 +20,8 @@ services:
       MEMGRAPH_URI: bolt://memgraph:7687
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       BACKTRACE_MODEL: ${BACKTRACE_MODEL:-claude-opus-5-5}
-      BACKTRACE_AGENT_MODEL: ${BACKTRACE_AGENT_MODEL:-}   # web chat agent; empty = BACKTRACE_MODEL
+      BACKTRACE_AGENT_MODEL: ${BACKTRACE_AGENT_MODEL:-claude-sonnet-5-5}   # web chat + research threads agent
+      BACKTRACE_THREAD_WORKER: ${BACKTRACE_THREAD_WORKER:-on}   # api serves research threads (off: scripts/runner.py)
       PG_DSN: ${PG_DSN:-}
       BACKTRACE_STORE: ${BACKTRACE_STORE:-postgres}   # default row store: postgres | graph
       WATCHFILES_FORCE_POLLING: "true"

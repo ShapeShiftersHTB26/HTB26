@@ -409,7 +409,9 @@ def propose_transform(view_id: str, kind: str, spec: dict, rationale: str, reads
         {"op":"aggregate","by":[cols],"metrics":{out:[col, mean|median|sum|count|min|max]}},
         {"op":"sort","by":[cols],"desc":bool}, {"op":"limit","n":int}
       Expressions are Python with columns as pandas Series plus pd/np, e.g. "pd.to_datetime(date).dt.year",
-      "(property_type == 'F') & (district == 'READING')".
+      "(property_type == 'F') & (district == 'READING')". Ops run in order on the current table, so after an
+      aggregate + sort a derive can compare rows, e.g. year-on-year change:
+      {"op":"derive","column":"change_pct","expr":"(median_price.pct_change() * 100).round(1)"} (or .shift(), .cumsum()).
     - kind "agent_map": spec {prompt, batch_size} — LLM adds fields per row
     - kind "agent_reduce": spec {prompt, max_rows} — LLM judges the whole table, cites source rows
     To revise, pass parent_id = the transform being revised. Returns id, new input view ids and

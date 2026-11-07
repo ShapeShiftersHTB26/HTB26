@@ -98,7 +98,19 @@ Indexes: `:Record(rid)`, plus `:View(id)`, `:SchemaVersion(id)`, `:Transform(id)
 - **Research threads (chat):** a thread is a root Intent plus its follow-ups (`parent_id`), with `(Message {role, text, kind, datasets?, suggestions?})-[:IN_THREAD]->(Intent)`.
   - **UI and runner ops (REST only):** `ask` (posts a user message and queues the agent; creates the thread when there's no `intent_id`), `get_thread` (messages, proposals, dataset cards and results in order, plus the stage), `next_turn` and `finish_turn`.
   - **Agent ops (MCP):** `say` (dataset cards and quick replies), `list_datasets` (curated catalog in `api/app/datasets.json`), `ingest_dataset` (loads a catalog dataset as a source, reusing one with the same filter).
-  - **Runner:** `scripts/runner.py` runs `claude -p --model sonnet` in `agent/`, one turn per queued thread, resuming that thread's session (`Intent.session_id`). Its status is on `Intent.agent_status`: idle, queued, working or error.
+  - **Worker:** `api/app/worker.py`, inside the api, serves queued threads one turn at a time.
+    - It uses `chat.events`: the same Agent SDK agent as the web chat, on `BACKTRACE_AGENT_MODEL` (default Sonnet).
+    - Each thread resumes its own session (`Intent.session_id`).
+    - `Intent.agent_status` is idle, queued, working or error; `Intent.agent_activity` is the current tool call.
+    - **Fallback:** with `BACKTRACE_THREAD_WORKER=off`, `scripts/runner.py` serves threads with the host `claude` CLI instead.
+  - **Canvas:** `get_thread.canvas` gives:
+    - the thread's tables, with the head plus pending shape versions (the UI draws a pending sibling as a diff), pending transforms, visuals, the latest instance and the answer;
+    - upstream lineage through head transforms;
+    - `Note` nodes (`note` op, `about` = a view);
+    - the open dataset choice;
+    - the latest focus.
+
+    Messages carry `focus` (view ids), from the user's selected node or from the agent's `say(focus=…)`.
   - The flow is described in [BRIEF-flow.md](BRIEF-flow.md).
 - **`result_current`** follows the result visual's revision tree, so approving a revision updates the outcome automatically.
 - **Mode:** `auto` means the agent approves its own steps and the user inspects the path afterwards. `guided` is step-by-step approval. The default is auto when anchored, guided for a fresh question.

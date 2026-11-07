@@ -1,4 +1,5 @@
 """FastAPI app: exposes the ops registry as REST (/api/op/<name>) and MCP (/mcp/)."""
+import asyncio
 import contextlib
 import functools
 import traceback
@@ -9,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from mcp.server.fastmcp import FastMCP
 
 from . import graph, ops, pg, thread  # noqa: F401  (imports register operations)
+from . import worker as thread_worker
 from .registry import REGISTRY, REST_ONLY
 
 
@@ -37,8 +39,11 @@ async def lifespan(_app: FastAPI):
         await run_in_threadpool(pg.ensure_schema)
     except Exception as e:  # noqa: BLE001  (api still starts; ping reports postgres down)
         print(f"postgres not ready: {e}")
+    worker = asyncio.create_task(thread_worker.loop()) if thread_worker.ENABLED else None
     async with mcp.session_manager.run():
         yield
+    if worker:
+        worker.cancel()
 
 
 app = FastAPI(title="backtrace", lifespan=lifespan)

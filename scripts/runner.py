@@ -1,6 +1,8 @@
 """Chat runner: answers research-thread messages from the web UI by running the app agent headless.
 
-Run on the host next to the stack (needs the `claude` CLI, logged in):  python scripts/runner.py
+Alternative to the api's own thread worker (api/app/worker.py): set BACKTRACE_THREAD_WORKER=off for the api,
+then run on the host (needs the `claude` CLI, logged in: uses your Claude login instead of the API key):
+    python scripts/runner.py
 Each queued thread gets one `claude -p` turn in agent/ (MCP tools only), resuming that thread's session.
 The agent's proposals land on the graph as it works; its final reply is posted to the thread.
 Env: BACKTRACE_API (default http://localhost:8000), BACKTRACE_CHAT_MODEL (default sonnet: cheaper per turn)."""
@@ -25,18 +27,6 @@ def op(name: str, **kwargs):
         return json.loads(r.read())
 
 
-def prompt_for(t: dict) -> str:
-    q = t["latest_intent"]
-    lines = [f"[Backtrace research chat] thread intent_id={t['intent_id']}.",
-             f"Latest intent in this thread: {q['id']} ({q['status']}, mode {q.get('mode')}): \"{q['text']}\"."]
-    if t["first_turn"]:
-        lines.append("This is the start of a new research thread: the first message is the user's question.")
-    lines.append("New from the user:")
-    lines += [f"- {'[action] ' if m['kind'] == 'action' else ''}{m['text']}" for m in t["messages"]]
-    lines.append("Follow the Chat mode rules in CLAUDE.md. Your final message is posted to the chat.")
-    return "\n".join(lines)
-
-
 def run_claude(prompt: str, session_id: str | None) -> dict:
     exe = shutil.which("claude")
     if not exe:
@@ -59,7 +49,7 @@ def run_claude(prompt: str, session_id: str | None) -> dict:
 
 def serve(t: dict) -> None:
     qid = t["intent_id"]
-    prompt = prompt_for(t)
+    prompt = t["prompt"]
     print(f"[{time.strftime('%H:%M:%S')}] {qid}: {' | '.join(m['text'] for m in t['messages'])[:120]}", flush=True)
     try:
         try:

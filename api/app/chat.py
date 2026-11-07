@@ -26,8 +26,8 @@ from claude_agent_sdk import (AssistantMessage, ClaudeAgentOptions, ResultMessag
 
 AGENT_DIR = os.environ.get("AGENT_DIR", "/srv/agent")
 MCP_URL = "http://localhost:8000/mcp/"  # this api's own MCP endpoint
-# The agent designs the whole analysis, so it can run on a stronger model than the agentic transforms.
-MODEL = os.environ.get("BACKTRACE_AGENT_MODEL") or os.environ.get("BACKTRACE_MODEL") or "claude-opus-5-5"
+# Web chat + research threads; Sonnet by default: it's billed per turn on the API key.
+MODEL = os.environ.get("BACKTRACE_AGENT_MODEL") or "claude-sonnet-5-5"
 MAX_TURNS = 80  # HACK: runaway guard; serving a full intent takes roughly 20-40 tool calls
 _RUNS: set[asyncio.Task] = set()
 
@@ -43,7 +43,7 @@ WEB_CHAT = (
     "proposals there. Replies are shown as plain text: no markdown headings or tables, a line or two each.")
 
 
-def _options(resume: str | None) -> ClaudeAgentOptions:
+def _options(resume: str | None, model: str | None = None) -> ClaudeAgentOptions:
     return ClaudeAgentOptions(
         cwd=AGENT_DIR,
         setting_sources=["project"],      # agent/CLAUDE.md
@@ -54,7 +54,7 @@ def _options(resume: str | None) -> ClaudeAgentOptions:
         tools=["Skill"],                  # no file or shell tools: the graph is the only state
         allowed_tools=["mcp__backtrace"],
         permission_mode="dontAsk",        # anything not allowed above is denied, never prompted
-        model=MODEL,
+        model=model or MODEL,
         max_turns=MAX_TURNS,
         resume=resume,
     )
@@ -145,23 +145,29 @@ async def stream(message: str, session_id: str | None, view_id: str | None, inte
 
 
 async def _run(prompt: str, session_id: str | None) -> AsyncIterator[str]:
-    # Sessions live in the container's ~/.claude, so a resume fails after the api container is recreated:
-    # in that case start a new conversation instead.
+    async for ev in events(prompt, session_id):
+        yield _sse(ev)
+
+
+async def events(prompt: str, session_id: str | None, model: str | None = None) -> AsyncIterator[dict]:
+    """The agent's events as dicts (see the module docstring). Also used by the research-thread worker.
+    Sessions live in the container's ~/.claude, so a resume fails after the api container is recreated:
+    in that case start a new conversation instead."""
     for resume in ([session_id, None] if session_id else [None]):
         started = False
         try:
             # aclosing: `async for` doesn't close the SDK's generator when the body raises, which skips its cleanup
-            async with contextlib.aclosing(query(prompt=prompt, options=_options(resume))) as messages:
+            async with contextlib.aclosing(query(prompt=prompt, options=_options(resume, model))) as messages:
                 async for msg in messages:
                     for ev in _events(msg):
                         if ev["type"] in ("text", "tool"):
                             started = True
                         elif ev["type"] == "done" and ev["is_error"] and not started and resume:
                             raise RuntimeError("; ".join(ev["errors"] or []) or "resume failed")
-                        yield _sse(ev)
+                        yield ev
             return
         except Exception as e:  # noqa: BLE001
             if started or not resume:
-                yield _sse({"type": "error", "message": f"{type(e).__name__}: {e}"})
+                yield {"type": "error", "message": f"{type(e).__name__}: {e}"}
                 return
-            yield _sse({"type": "note", "text": "the previous chat has expired, so this starts a new one"})
+            yield {"type": "note", "text": "the previous chat has expired, so this starts a new one"}

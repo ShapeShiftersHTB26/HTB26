@@ -32,6 +32,8 @@ Choose the transform kind:
   ]}
   ```
   Expressions are pandas over column names; combine conditions with `&` and `|`, and parenthesise each one. Also available: `sort {by, desc}` and `limit {n}`.
+
+  Ops run in order. After `aggregate` + `sort`, a `derive` can compare rows, e.g. year-on-year change: `{"op": "derive", "column": "change_pct", "expr": "(median_price.pct_change() * 100).round(1)"}`. Use `.shift()` or `.cumsum()` for similar cases. Don't drop a column because it needs the previous row.
 - `agent_map` `{prompt, batch_size}` to infer or classify something for **each row**.
 - `agent_reduce` `{prompt, max_rows}` to judge **a whole table** (rank, find notable trends, summarise). Put it after aggregation so the input is small.
 

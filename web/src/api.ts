@@ -168,6 +168,7 @@ export type ThreadItem =
       suggestions?: string[];
       view_id?: string;
       hash?: string;
+      focus?: string[];
     }
   | { type: "proposal"; at: string; kind: Kind; view_name: string; is_head: boolean; proposal: Proposal }
   | {
@@ -183,7 +184,16 @@ export type ThreadItem =
       instance: { id: string; hash?: string; row_count?: number } | null;
     };
 export type Thread = {
-  intent: { id: string; text: string; status: string; mode: string; agent_status: "idle" | "queued" | "working" | "error"; agent_error?: string; created_at: string };
+  intent: {
+    id: string;
+    text: string;
+    status: string;
+    mode: string;
+    agent_status: "idle" | "queued" | "working" | "error";
+    agent_error?: string;
+    agent_activity?: string;
+    created_at: string;
+  };
   intents: { id: string; text: string; status: string }[];
   items: ThreadItem[];
   comments: Record<string, Comment[]>;
@@ -191,4 +201,11 @@ export type Thread = {
   names: Record<string, string>;
   view_kinds: Record<string, string>;
   stage: "ask" | "shape" | "data" | "explore";
+  canvas: {
+    nodes: import("./research/nodes").CanvasView[];
+    edges: { from: string; to: string; pending: boolean; kind?: string }[];
+    notes: import("./research/nodes").Note[];
+    open_datasets: string[];
+    focus: string[] | null;
+  };
 };

@@ -13,12 +13,10 @@ docker compose logs -f api            # watch the api while you work
 python scripts/reset.py               # wipe the graph   (talks to the api over REST)
 python scripts/seed.py                # ingest the seed data from data/raw/   (from S2)
 ```
-**Research chat (Research tab, the default page):** run the chat runner on the host, next to the stack:
-```powershell
-python scripts/runner.py              # answers UI chat messages with `claude -p` in agent/ (MCP tools only)
-$env:BACKTRACE_CHAT_MODEL="opus"      # optional: default is sonnet (cheaper per turn)
-```
-It needs the `claude` CLI on PATH and logged in. Each thread resumes its own session; replies and proposals appear in the thread.
+**Research chat (Research tab, the default page):** the api serves research threads itself.
+- **How:** `api/app/worker.py` reuses the web-chat agent from `chat.py`, which runs Claude Agent SDK on `ANTHROPIC_API_KEY`.
+- **Model:** `BACKTRACE_AGENT_MODEL`, default `claude-sonnet-5-5`.
+- **Without an API key:** set `BACKTRACE_THREAD_WORKER=off`, then run `python scripts/runner.py` on the host. It uses your `claude` login instead.
 
 To drive the agent from a terminal instead: `cd agent; claude`. `agent/.mcp.json` configures the `backtrace` MCP server. Check that `/mcp` in Claude Code shows it connected.
 
@@ -35,7 +33,10 @@ It uses only the Python standard library (`urllib`) against REST, prints PASS or
 - **MCP "Pending approval":** the first `claude` run in `agent/` asks you to approve the project's `backtrace` server. Accept it once per machine.
 - **MCP not showing in Claude Code:** `curl -i localhost:8000/mcp/` should not 404. Restart `claude` in `agent/`, and check the trailing slash in `.mcp.json`.
 - **The UI isn't updating:** check the network tab for `get_graph` polling, and check that the Vite proxy target is `http://api:8000` inside compose.
-- **Chat stuck on "Reading your message…":** the runner isn't running, or it crashed. Its console shows each turn and any errors; restarting it re-queues threads that were mid-turn.
+- **Research chat stuck on "reading your message…":**
+  - Check `docker compose logs api` for worker errors.
+  - Check that `ANTHROPIC_API_KEY` is set, or that the host runner is running if the worker is off.
+  - Restarting the api re-queues threads that were mid-turn.
 - **Odd graph state:** open Lab (localhost:3000) and run `MATCH (n) RETURN labels(n), count(*)`.
 
 ## Demo prep (S5)
