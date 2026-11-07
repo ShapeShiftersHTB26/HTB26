@@ -97,11 +97,32 @@ cargo test -p prediction-market                            # program tests (Lite
 cd ../web && ADMIN_API_KEY=... npm run pm:e2e              # 70s market: trade both books, mint/merge, resolve, redeem
 ```
 
-## Devnet demo
+## Production (hosted Postgres + devnet)
 
-Run the same steps with `RPC_URL=<devnet RPC> ./scripts/setup.sh`. A free Helius or Triton devnet endpoint holds up better than the public one, because the bots send a transaction every few seconds.
+`docker-compose.prod.yml` at the repo root is an override. It skips `prediction-market-db` and `prediction-market-validator`, and points the backend at your hosted Postgres and a devnet RPC. Every other service runs as in `docker-compose.yml`. Needs Docker Compose ≥ 2.24.4 (for `!reset` / `!override`).
 
-- Fund the admin with about 15 SOL. Each market costs about 4 SOL of rent (two books × three ~90 KB accounts), plus bot funding.
+One-time devnet setup (Solana CLI + Anchor on your machine; keys land in `prediction-market/keys/`):
+
+```bash
+solana-keygen new -o keys/admin.json          # skip if you already have it; fund it with ~15 SOL on devnet
+RPC_URL=https://api.devnet.solana.com ./scripts/setup.sh   # creates the mUSDC mint, deploys the program (~2 SOL), inits Config
+```
+
+Deploy (from the repo root):
+
+```bash
+cp prediction-market/.env.prod.example prediction-market/.env.prod   # DATABASE_URL, RPC_URL, ADMIN_API_KEY
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+- The backend mounts `prediction-market/keys/` (admin + mUSDC mint keypairs, plus bot keys it creates). Copy that folder to the server.
+- On start, it runs migrations on the hosted db and skips the airdrop (devnet faucets won't give 1000 SOL). It creates the mint and Config only if they're missing.
+- **The admin wallet pays for everything:**
+  - about 4 SOL of rent per market (two books × three ~90 KB accounts), and anyone can hit **Create market**;
+  - bot funding and faucet SOL.
+
+  Keep an eye on its balance.
+- A free Helius or Triton devnet RPC holds up better than the public one, because the bots send a transaction every few seconds.
 - `target/deploy/prediction_market-keypair.json` sets the program id. It's gitignored, so share it with teammates. Alternatively, run `anchor keys sync` and redeploy.
 
 ## API
@@ -125,4 +146,4 @@ Admin endpoints need the header `x-admin-key`.
 - **OpenBook instructions are built by hand** (`backend/src/chain/openbook.rs`, `web/src/predictions/solana.ts`): an 8-byte discriminator plus borsh args, with account order taken from the OpenBook IDL. Its legacy IDL doesn't work with Anchor 1.x codegen.
 - **Only the market maker places resting orders.** Users and bots send IOC take orders that settle straight into their token accounts. So the crank only ever passes the admin's open-orders accounts, and users never need an open-orders account.
 - **The market maker quotes YES around the fair price `f` and NO around `100 − f`**, with a ≥1¢ spread on each side. That keeps YES ask + NO ask > 100¢ and YES bid + NO bid < 100¢, so the two books stay arbitrage-free.
-- **Public creation costs the admin about 4 SOL of rent per market.** That's free on the local validator. Before any public deployment, add rate limiting.
+- **Public creation costs the admin about 4 SOL of rent per market.** That's free on the local validator. On devnet, watch the admin balance (see Production).

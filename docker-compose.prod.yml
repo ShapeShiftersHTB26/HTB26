@@ -1,0 +1,23 @@
+# Prod override for the prediction market: hosted Postgres + Solana devnet instead of the
+# local prediction-market-db and prediction-market-validator. All other services run as in docker-compose.yml.
+#
+#   cp prediction-market/.env.prod.example prediction-market/.env.prod    # fill it in
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# One-time devnet setup (fund the admin, deploy the program): prediction-market/README.md, "Production".
+services:
+  prediction-market-db:
+    profiles: [local-chain]        # not started: DATABASE_URL points at the hosted Postgres
+  prediction-market-validator:
+    profiles: [local-chain]        # not started: RPC_URL points at devnet
+
+  prediction-market-backend:
+    depends_on: !reset []
+    env_file: prediction-market/.env.prod   # DATABASE_URL, RPC_URL, ADMIN_API_KEY, optional tuning
+    environment: !override
+      ADMIN_KEYPAIR: /keys/admin.json
+      MUSDC_MINT_KEYPAIR: /keys/musdc-mint.json
+      BOT_KEYS_DIR: /keys/bots
+      BOOTSTRAP_ON_START: "true"   # idempotent: creates the mUSDC mint + program Config if missing
+    volumes: !override
+      - ./prediction-market/keys:/keys   # admin.json + musdc-mint.json (scripts/setup.sh writes them)
