@@ -4,6 +4,7 @@ import ProposalCards from "./ProposalCards";
 import RowsTable from "./RowsTable";
 import ShapeBody from "./ShapeBody";
 import TransformBody from "./TransformBody";
+import VerifyReport from "./VerifyReport";
 
 export type Tab = Kind | "data";
 const TABS: { key: Tab; label: string }[] = [
@@ -153,6 +154,9 @@ function DataTab(props: {
       {err && <span className="error small">{err}</span>}
     </div>
   );
+  const verify = data.mode === "instance" && data.instance?.id && (
+    <VerifyReport key={data.instance.id} instanceId={data.instance.id} hash={data.instance.hash} label="instance hash" />
+  );
   if (data.mode === "preview")
     return (
       <div className="data">
@@ -163,6 +167,7 @@ function DataTab(props: {
   return (
     <div className="data">
       {bar}
+      {verify}
       {props.visuals.length > 0 && (
         <div className="visual-buttons">
           <span className="label">visuals</span>

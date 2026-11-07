@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { op } from "./api";
 import { CanvasTarget } from "./Canvas";
+import VerifyReport from "./VerifyReport";
 
 type Step = {
   id: string;
@@ -90,6 +91,10 @@ export default function IntentPanel(props: {
           )}
           <button onClick={props.onToggleExpand}>{props.expanded ? "Collapse path on canvas" : "Lift the hood (expand path)"}</button>
         </div>
+        {d.result_instance && (
+          <VerifyReport key={d.result_instance.id} instanceId={d.result_instance.id} hash={d.result_instance.hash}
+                        label="result hash (commits to the whole chain)" />
+        )}
         {q.status === "open" && q.steps === 0 && (
           <div className="waiting">
             Waiting for the agent. In the terminal (in <code>agent/</code>) run <code>claude</code> and say

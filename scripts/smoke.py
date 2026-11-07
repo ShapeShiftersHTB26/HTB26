@@ -185,7 +185,37 @@ def stage4():
     check("S4 agent_reduce evaluate + cited trace", reduce_)
 
 
-STAGES = [stage0, stage1, stage2, stage3, stage4]
+def stage_dp():
+    import subprocess
+    ctx = CTX
+
+    def append():
+        r = op("append_batch", view_id=ctx["src"], path="pp-2025.csv")
+        assert len(r["batches"]) == 2 and r["row_count"] == 100, r
+        v = op("verify", instance_id=r["instance_id"])
+        assert v["ok"], v
+        return f"2 batches, {r['row_count']} rows, hash {r['hash'][:12]}"
+    check("DP append_batch -> 2-batch snapshot verifies", append)
+
+    def reevaluate():
+        e = op("evaluate", view_id=ctx["view"])
+        v = op("verify", instance_id=e["instance_id"])
+        assert v["ok"] and v["checks"]["recomputed"], v
+        ctx["inst"] = e["instance_id"]
+        return f"re-evaluated on new snapshot, verified (recomputed)"
+    check("DP re-evaluate + verify with recompute", reevaluate)
+
+    def tamper():
+        subprocess.run(["docker", "compose", "exec", "-T", "api", "python", "-c",
+                        f"from app import pg; pg.run('UPDATE derived.inst_{ctx['inst']} SET x = x + 1 WHERE _n = 0')"],
+                       check=True, stdout=subprocess.DEVNULL)
+        v = op("verify", instance_id=ctx["inst"])
+        assert not v["ok"] and v["checks"]["data_root"] is False, v["checks"]
+        return "tampered row detected"
+    check("DP verify detects a tampered row", tamper)
+
+
+STAGES = [stage0, stage1, stage2, stage3, stage4, stage_dp]
 
 if __name__ == "__main__":
     import subprocess

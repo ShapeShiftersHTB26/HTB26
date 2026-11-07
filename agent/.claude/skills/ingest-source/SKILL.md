@@ -17,3 +17,5 @@ description: Bring a new structured dataset (CSV in data/raw) into Backtrace as 
 
    Approve it yourself if auto-accept is on; otherwise let the user approve it.
 4. Report the row count and a one-line summary of what the dataset contains.
+
+**New data for an existing source** (e.g. next year's file): don't ingest a new view. Call `append_batch(view_id, path)`. It runs the same recipe and publishes a new snapshot that contains all batches. Downstream views pick it up when they're re-evaluated (`evaluate`), and their hashes change accordingly.

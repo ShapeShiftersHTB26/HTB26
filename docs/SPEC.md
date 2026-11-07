@@ -164,6 +164,8 @@ Each operation is a typed function in `ops.py`, registered with `@operation`. It
 | `get_records` | 2 | `view_id \| instance_id, where?, limit=50, offset=0` | rows plus instance metadata |
 | `evaluate` | 3 | `view_id, inputs?` | `{instance_id, row_count, invalid_count}` |
 | `trace` | 3 | `rid` | levels |
+| `append_batch` | DP2 | `view_id, path` | new raw batch plus a new snapshot of the source view (with hashes) |
+| `verify` | DP2 | `instance_id, recompute=True` | hash-tree verification report |
 | `set_auto_accept` | 5 | `view_id, on` | – |
 | `wait_for_decision` | 5 | `target_ids, timeout_s ≤ 50` | statuses and new comments |
 

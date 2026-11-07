@@ -10,6 +10,9 @@ description: Evaluate approved views to produce real data, summarise the answer,
 - If evaluation fails, read the error. It's usually a wrong column name or code value in a transform. Fix it by proposing a sibling transform (`reverse-step`), get it approved, and re-evaluate.
 - Report the result in 1–3 lines: the row count, any invalid rows, and the headline of the answer, using the rows from `get_records`. The visuals now show real data in the UI.
 
+## Hashes
+Every evaluated instance has a `hash` that commits to its formula, its rows and every input, down to the source files. If the user asks whether a result can be trusted, or wants proof of it, call `verify(instance_id)` and summarise the result: which checks passed, which steps were re-run, and which agentic steps were checked against their stored outputs.
+
 ## Trace ("where does this come from?")
 1. Find the record: the user may give you a rid from the UI; otherwise use `get_records(view_id, where={...})` and take its `rid`.
 2. Call `trace(rid)`.

@@ -47,6 +47,7 @@ def ensure_schema() -> None:
     run("""CREATE TABLE IF NOT EXISTS meta.tables (
              prefix text PRIMARY KEY, schema_name text NOT NULL, table_name text NOT NULL,
              view_id text, kind text NOT NULL, created_at timestamptz NOT NULL DEFAULT now())""")
+    run("ALTER TABLE meta.tables ADD COLUMN IF NOT EXISTS batches text[]")
     run("""CREATE OR REPLACE FUNCTION meta.append_only() RETURNS trigger LANGUAGE plpgsql AS $$
            BEGIN RAISE EXCEPTION 'raw tables are append-only (% on %)', TG_OP, TG_TABLE_NAME; END $$""")
 
@@ -167,27 +168,38 @@ def clean(row: dict) -> dict:
     return out
 
 
-def _source_of(prefix: str) -> tuple[sql.Composable, sql.Composable, list]:
+def register_snapshot(instance_id: str, view_id: str, table: str, batches: list[str]) -> None:
+    """A source snapshot is a manifest over raw batches (rows are not copied: raw is append-only)."""
+    run("INSERT INTO meta.tables (prefix, schema_name, table_name, view_id, kind, batches) "
+        "VALUES (%s,'raw',%s,%s,'snapshot',%s) ON CONFLICT (prefix) DO NOTHING",
+        (instance_id, table, view_id, batches))
+
+
+def _source_of(prefix: str) -> tuple[sql.Composable, sql.Composable, list, sql.Composable]:
+    """(table, where, params, order) selecting the rows of an instance, batch or snapshot in storage order."""
     loc = _location(prefix)
     t = sql.SQL("{}.{}").format(sql.Identifier(loc["schema_name"]), sql.Identifier(loc["table_name"]))
     if loc["kind"] == "raw":
-        return t, sql.SQL("_batch_id = %s"), [prefix]
-    return t, sql.SQL("TRUE"), []
+        return t, sql.SQL("_batch_id = %s"), [prefix], sql.SQL("_n")
+    if loc["kind"] == "snapshot":
+        return (t, sql.SQL("_batch_id = ANY(%s)"), [loc["batches"]],
+                sql.SQL("array_position({}::text[], _batch_id), _n").format(sql.Literal(loc["batches"])))
+    return t, sql.SQL("TRUE"), [], sql.SQL("_n")
 
 
 def read(prefix: str, where: dict | None = None, limit: int | None = None, offset: int = 0,
          keep_src: bool = False) -> tuple[int, list[dict]]:
     """Rows of one instance/batch in order, with an optional equality filter. Returns (total, rows)."""
-    t, base, params = _source_of(prefix)
+    t, base, params, order = _source_of(prefix)
     conds, p = [base], list(params)
     for k, v in (where or {}).items():
         conds.append(sql.SQL("{}::text = %s").format(sql.Identifier(_ident(k))))
         p.append(str(v))
     w = sql.SQL(" AND ").join(conds)
     total = run(sql.SQL("SELECT count(*) AS n FROM {} WHERE {}").format(t, w), p)[0]["n"]
-    q = sql.SQL("SELECT * FROM {} WHERE {} ORDER BY _n").format(t, w)
+    q = sql.SQL("SELECT * FROM {} WHERE {} ORDER BY {}").format(t, w, order)
     if limit is not None:
-        q = sql.SQL("SELECT * FROM {} WHERE {} ORDER BY _n LIMIT %s OFFSET %s").format(t, w)
+        q = sql.SQL("SELECT * FROM {} WHERE {} ORDER BY {} LIMIT %s OFFSET %s").format(t, w, order)
         p += [int(limit), int(offset)]
     rows = run(q, p)
     return total, [clean(r) if keep_src else {k: v for k, v in clean(r).items() if k != "_src"} for r in rows]
@@ -200,9 +212,23 @@ def by_rids(rids: list[str]) -> list[dict]:
     for r in rids:
         groups.setdefault(r.split(":")[0], []).append(r)
     for prefix, ids in groups.items():
-        t, _, _ = _source_of(prefix)
+        t, _, _, _ = _source_of(prefix)
         out += [clean(r) for r in run(sql.SQL("SELECT * FROM {} WHERE _rid = ANY(%s) ORDER BY _n").format(t), (ids,))]
     return out
+
+
+def stream(prefix: str, page: int = 10_000):
+    """All rows of an instance/batch/snapshot in storage order (with _src), paged; used for hashing."""
+    t, base, params, order = _source_of(prefix)
+    offset = 0
+    while True:
+        rows = run(sql.SQL("SELECT * FROM {} WHERE {} ORDER BY {} LIMIT %s OFFSET %s").format(t, base, order),
+                   [*params, page, offset])
+        for r in rows:
+            yield clean(r)
+        if len(rows) < page:
+            return
+        offset += page
 
 
 def drop_prefixes(prefixes: list[str]) -> int:

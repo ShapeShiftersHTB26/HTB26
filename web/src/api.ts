@@ -22,7 +22,7 @@ export type View = {
   auto_accept?: boolean;
   head: Record<Kind, string | null>;
   pending: Counts;
-  latest_instance?: { id: string; row_count: number; created_at?: string; model?: string } | null;
+  latest_instance?: { id: string; row_count: number; created_at?: string; model?: string; hash?: string } | null;
   instance_count?: number;
   visuals?: { id: string; status: string; uses: string[]; title?: string; intent_id?: string }[];
 };
@@ -74,7 +74,17 @@ export type ViewDetail = {
   instances: Instance[];
   latest_instance: Instance | null;
 };
-export type Instance = { id: string; view_id: string; created_at: string; row_count: number; invalid_count: number };
+export type Instance = {
+  id: string;
+  view_id: string;
+  created_at: string;
+  row_count: number;
+  invalid_count: number;
+  hash?: string;
+  formula_hash?: string;
+  data_root?: string;
+  batches?: string;
+};
 
 export type Column = { name: string; type?: string; role?: string; unit?: string; description?: string };
 export function columns(schema: any): Column[] {

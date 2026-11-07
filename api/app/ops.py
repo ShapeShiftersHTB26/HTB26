@@ -70,7 +70,7 @@ def get_graph() -> dict:
     for r in g.run("MATCH (i:Instance) RETURN i ORDER BY i.created_at"):
         i = r["i"]
         latest[i["view_id"]] = {"id": i["id"], "row_count": i["row_count"], "created_at": i["created_at"],
-                                "model": i.get("model")}
+                                "model": i.get("model"), "hash": i.get("hash")}
         counts[i["view_id"]] = counts.get(i["view_id"], 0) + 1
     titles = {}
     for r in g.run("MATCH (p:Visual) RETURN p.id AS id, p.html AS html"):
@@ -209,7 +209,9 @@ def get_intent(intent_id: str) -> dict:
                       "created_at": p["created_at"], "transform_kind": p.get("kind"),
                       "reads": [names.get(x, x) for x in p.get("reads") or []]})
     children = [r["c"] for r in g.run("MATCH (c:Intent {parent_id:$q}) RETURN c", q=intent_id)]
-    return {"intent": q, "steps": steps, "children": children, "names": names}
+    ri = X.latest_instance(q["result_view_id"]) if q.get("result_view_id") else None
+    return {"intent": q, "steps": steps, "children": children, "names": names,
+            "result_instance": {"id": ri["id"], "hash": ri.get("hash")} if ri else None}
 
 
 # ---------------------------------------------------------------- S1
@@ -356,8 +358,10 @@ def ingest(path: str, name: str, columns: list[str] | None = None, filter: str |
     - filter: optional pandas expression over column names to keep a slice, e.g. "district == 'READING'"
     - parse_dates: columns to parse as dates; limit: max rows
     The shape is inferred (crude roles) and auto-approved; refine it afterwards with propose_schema
-    (parent_id = the returned schema_id). Returns view_id, row_count, schema and sample rows."""
-    spec = {"path": _resolve_path(path), "columns": columns, "filter": filter,
+    (parent_id = the returned schema_id). The parsing rules become the view's RECIPE; this first run appends
+    batch 1 and publishes the first snapshot (with hashes). Add later files with append_batch.
+    Returns view_id, snapshot instance, hashes, schema and sample rows."""
+    spec = {"type": "file", "path": _resolve_path(path), "columns": columns, "filter": filter,
             "parse_dates": parse_dates, "limit": limit}
     spec = {k: v for k, v in spec.items() if v is not None}
     df = SRC.run(spec)
@@ -370,10 +374,12 @@ def ingest(path: str, name: str, columns: list[str] | None = None, filter: str |
                                      "scope": [f"filter: {filter}"] if filter else ["all rows"],
                                      "preview": preview, "rationale": f"Inferred from {path}."}, None, "agent")
     t = P.create("transform", view_id, {"kind": "source", "spec": spec, "reads": [],
-                                        "rationale": f"Ingest {path}."}, None, "agent")
+                                        "rationale": f"Recipe: read {path}"
+                                                     + (f", keep rows where {filter}" if filter else "") + "."},
+                 None, "agent")
     P.decide(s["id"], "approve", "auto")
     P.decide(t["id"], "approve", "auto")
-    inst = X.write_instance(view_id, X.to_rows(df), None, s["id"], t["id"], [], props=schema["properties"], raw=True)
+    inst = X.append_batch(view_id, df=df)
     return {"view_id": view_id, "schema_id": s["id"], "transform_id": t["id"], **inst,
             "schema": schema, "sample": preview}
 
@@ -501,3 +507,22 @@ def trace(rid: str) -> dict:
     source rows. Returns levels from the record itself down to the raw data; each level has the view, the
     transform that produced it, how many records contributed, and a sample of them."""
     return X.trace(rid)
+
+
+# ---------------------------------------------------------------- data plane: batches + hashes
+
+@operation
+def append_batch(view_id: str, path: str) -> dict:
+    """Append new data to a SOURCE view: runs the view's recipe (its parsing rules and filter) on another file
+    in data/raw/ (e.g. "pp-2026.csv"), stores the rows as a new append-only batch, and publishes a new snapshot
+    containing all earlier batches plus this one. Downstream views then re-evaluate on the new snapshot."""
+    return X.append_batch(view_id, path)
+
+
+@operation
+def verify(instance_id: str, recompute: bool = True) -> dict:
+    """Check an instance's hash tree end to end: recompute every data root from the stored rows, every formula
+    hash from the definitions, every batch from its source file (when present), and — with recompute — re-run
+    deterministic (ops) steps from their stored inputs. Returns the tree with ok/failed checks per node.
+    The instance hash of a final view commits to all operations and rows below it."""
+    return X.verify(instance_id, recompute)

@@ -30,6 +30,8 @@ The contract and the op semantics are in [docs/SPEC.md](../../../docs/SPEC.md) (
 
 Dry runs on preview rows are deferred to S5.
 
+**Hashes:** every new instance is sealed by `executor.seal`, which hashes the rows read back from Postgres. If you change what a transform produces or how it's evaluated, bump `hashing.ENGINE`. Keep `verify`'s re-run path (`_compute`) identical to `evaluate`'s.
+
 ## Checking your work
 - After evaluating, `MATCH (r:Record)-[:IN]->(:Instance {id:$i}) RETURN count(r)`, and spot-check one record's `DERIVED_FROM` count in Lab.
 - An aggregate row's lineage count should equal its `count` metric.

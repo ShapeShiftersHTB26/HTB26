@@ -5,6 +5,7 @@ import TransformBody from "./TransformBody";
 
 type Level = {
   instance_id: string;
+  hash?: string;
   view_id: string;
   view_name: string;
   view_kind: string;
@@ -48,6 +49,7 @@ export default function TraceDrawer(props: {
               <a onClick={() => props.onOpenView(L.view_id)}>{L.view_name}</a>
               <span className="muted"> · {L.count.toLocaleString()} record{L.count === 1 ? "" : "s"}</span>
               {L.view_kind === "source" && <span className="vb">raw data</span>}
+              {L.hash && <code className="hash small" title={L.hash}>{L.hash.slice(0, 10)}…</code>}
             </div>
             {L.transform?.kind && L.transform.kind !== "source" && (
               <details>

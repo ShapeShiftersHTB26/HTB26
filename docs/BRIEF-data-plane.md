@@ -1,6 +1,8 @@
 # Next stage: data plane (sources, recipes, snapshots, hashes)
 
-*Status: agreed direction. **Phase 1 done** (data plane on the remote cluster, records migrated). Details go into [SPEC.md](SPEC.md) as each phase lands.*
+*Status: agreed direction. **Phases 1–2 done:**
+- **Phase 1:** data plane on the remote cluster, records migrated.
+- **Phase 2:** recipes, batches, snapshots, hashes and `verify`; existing instances backfilled, and every chain verifies. Details go into [SPEC.md](SPEC.md) as each phase lands.*
 
 ## Why
 Holding raw rows in Memgraph doesn't scale. We split the system into:
@@ -35,6 +37,19 @@ A rid stays `<instance_or_batch_id>:<n>`, so the lineage format is unchanged.
 - **Agentic steps** are hashed by their stored outputs. They can be replayed but not recomputed, and the verify report marks them.
 - **`verify(instance_id)`** recomputes the chain from Postgres and compares, returning the hash tree for the "under the hood" view.
 - **Scope:** truthfulness of the computation, not authenticity of the provider. The two aren't the same thing, and authenticity is explicitly out of scope.
+
+## As built (phase 2)
+- **Source views:**
+  - The head transform (kind `source`, spec type `file`) is the **recipe**.
+  - `ingest` creates the recipe and appends batch 1.
+  - `append_batch(view, path)` runs the recipe on another file, adds a `Batch` node (path, file sha256, data root, hash) whose rows are appended to `raw.src_<view>`, and publishes a new **snapshot** instance: `batches` = the previous snapshot's batches plus the new one, registered in `meta.tables` as kind `snapshot`.
+- **Every instance stores `formula_hash`, `data_root`, `hash` and `engine`,** computed by reading the rows back from Postgres. The rules (canonical rows, chunk size, how formulas are hashed, run parameters left out) are in `api/app/hashing.py`.
+- **`verify(instance_id, recompute)`** returns a tree. For each node it reports data root, formula, hash, and a re-run of ops steps from stored inputs. For each batch it reports rows, hash and the source file. Agentic steps are verified against their stored output.
+- **UI:**
+  - The Data tab shows the instance hash and a Verify button with the tree.
+  - The intent panel shows the **result hash**, the one value a market commits to.
+  - The trace drawer shows each level's hash.
+- **One-offs:** `python -m app.backfill_hashes` (already run).
 
 ## Phases
 1. **Data plane:** Postgres connection, the `raw`, `derived` and `meta` schemas, the append-only trigger, all instance rows and lineage in Postgres, `get_records` and `trace` reading from Postgres, and a migration of the existing Memgraph records.
