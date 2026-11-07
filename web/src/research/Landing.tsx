@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { op } from "../api";
+import { useEffect, useRef, useState } from "react";
+import { Dataset, op } from "../api";
 
 export type Stage = "ask" | "shape" | "data" | "explore";
 const STEPS: { key: Stage | "future"; label: string; hint: string }[] = [
@@ -30,16 +30,22 @@ export function Rail(props: { stage: Stage | null; future?: boolean; hints?: boo
   );
 }
 
-const EXAMPLES = [
-  "How have Reading flat prices changed?",
-  "Will the flat market in Reading grow next year?",
-  "Are new builds in Reading selling at a premium?",
-];
 
 export default function Landing(props: { onStart: (intentId: string) => void }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [datasets, setDatasets] = useState<(Dataset & { examples?: string[] })[]>([]);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    op<{ datasets: (Dataset & { examples?: string[] })[] }>("list_datasets")
+      .then((r) => setDatasets(r.datasets.filter((d) => d.available)))
+      .catch(() => setDatasets([]));
+  }, []);
+  const pick = (q: string) => {
+    setText(q);
+    input.current?.focus();
+  };
   const start = async () => {
     if (!text.trim()) return;
     setBusy(true);
@@ -66,18 +72,34 @@ export default function Landing(props: { onStart: (intentId: string) => void }) 
           start();
         }}
       >
-        <input autoFocus value={text} onChange={(e) => setText(e.target.value)} disabled={busy}
+        <input ref={input} autoFocus value={text} onChange={(e) => setText(e.target.value)} disabled={busy}
                placeholder="e.g. Will the flat market in Reading grow next year?" />
         <button className="approve" disabled={busy || !text.trim()}>{busy ? "Starting…" : "Start"}</button>
       </form>
       {err && <div className="error small">{err}</div>}
-      <div className="examples">
-        {EXAMPLES.map((x) => (
-          <button key={x} className="example" onClick={() => setText(x)}>
-            {x}
-          </button>
-        ))}
-      </div>
+      {datasets.length > 0 && (
+        <>
+          <div className="label start-label">or start from data we already have</div>
+          <div className="start-datasets">
+            {datasets.map((d) => (
+              <div key={d.id} className="start-ds">
+                <div className="ds-title">{d.title}</div>
+                <div className="muted small">
+                  {d.publisher} · {d.coverage}
+                </div>
+                <div className="ds-desc small">{d.description}</div>
+                <div className="start-qs">
+                  {(d.examples || []).map((q) => (
+                    <button key={q} className={`example ${text === q ? "picked" : ""}`} onClick={() => pick(q)}>
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
       <Rail stage={null} hints />
     </div>
   );

@@ -358,3 +358,11 @@ span.added { color: var(--ok); font-weight: 600; }
 .ds-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; margin-top: 6px; }
 .ds-list .dataset { gap: 4px; }
 .clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+.start-label { display: block; margin: 28px 0 10px; }
+.start-datasets { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; text-align: left; margin-bottom: 36px; }
+.start-ds { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; }
+.start-qs { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.start-qs .example { text-align: left; border-radius: 8px; }
+.example.picked { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.landing { max-width: 860px; margin-top: 8vh; }
