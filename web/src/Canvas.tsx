@@ -19,10 +19,23 @@ function layout(graph: Graph): Node[] {
     const col = d(v.id);
     const row = rows.get(col) || 0;
     rows.set(col, row + 1);
+    const pending = v.pending.schema + v.pending.transform + v.pending.visual;
     return {
       id: v.id,
       position: { x: col * 280, y: row * 140 },
-      data: { label: v.name },
+      data: {
+        label: (
+          <div>
+            <div className="vname">{v.name}</div>
+            <div className="vbadges">
+              {v.kind === "source" && <span className="vb">source</span>}
+              {!v.head.schema && <span className="vb draft">draft</span>}
+              {v.head.visual && <span className="vb">visual</span>}
+              {pending > 0 && <span className="vb pending">{pending} pending</span>}
+            </div>
+          </div>
+        ),
+      },
       className: `vnode ${v.kind}`,
     };
   });

@@ -11,5 +11,50 @@ export async function op<T = any>(name: string, args: Record<string, unknown> = 
   return res.json();
 }
 
-export type View = { id: string; name: string; kind: string; [k: string]: any };
+export type Kind = "schema" | "transform" | "visual";
+export type Counts = Record<Kind, number>;
+
+export type View = {
+  id: string;
+  name: string;
+  kind: "source" | "derived";
+  question?: string;
+  auto_accept?: boolean;
+  head: Record<Kind, string | null>;
+  pending: Counts;
+};
 export type Graph = { views: View[]; edges: { from: string; to: string; pending?: boolean }[] };
+
+export type Proposal = {
+  id: string;
+  view_id: string;
+  parent_id?: string;
+  author: "agent" | "user";
+  status: "pending" | "approved" | "discarded";
+  counter?: number;
+  decided_by?: string;
+  rationale?: string;
+  created_at: string;
+  [k: string]: any;
+};
+export type Comment = { id: string; target_id: string; text: string; author: string; created_at: string };
+
+export type ViewDetail = {
+  view: Omit<View, "head" | "pending">;
+  proposals: Record<Kind, Proposal[]>;
+  head: Record<Kind, string | null>;
+  comments: Record<string, Comment[]>;
+  upstream: string[];
+  downstream: string[];
+};
+
+export type Column = { name: string; type?: string; role?: string; unit?: string; description?: string };
+export function columns(schema: any): Column[] {
+  return Object.entries(schema?.properties || {}).map(([name, s]: [string, any]) => ({
+    name,
+    type: s.type,
+    role: s["x-role"],
+    unit: s["x-unit"],
+    description: s.description,
+  }));
+}

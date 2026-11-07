@@ -165,7 +165,7 @@ Each operation is a typed function in `ops.py`, registered with `@operation`. It
 
 ## Stages (each ends with `docker compose up` and the demo path working so far)
 - [x] **S0 Skeleton:** all four services up. `ping` and `get_graph` work over REST and MCP. Claude Code in `agent/` sees the tools. The web app shows an empty canvas, polling.
-- [ ] **S1 Question → view:** `propose_schema`, `comment`, `decide` and `get_view`, with head and counter logic. The UI shows views and shape cards with Approve, Discard, Comment and a preview table. The `question-to-shape` skill works end to end.
+- [x] **S1 Question → view:** `propose_schema`, `comment`, `decide` and `get_view`, with head and counter logic. The UI shows views and shape cards with Approve, Discard, Comment and a preview table. The `question-to-shape` skill works end to end.
 - [ ] **S2 Advance:**
   - **visual:** `propose_visual` plus the iframe on preview rows
   - **upstream:** `ingest` and `propose_transform` (stored, not run), `get_frontier`, dashed and solid edges

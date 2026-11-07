@@ -9,14 +9,14 @@ API = "http://localhost:8000"
 results: list[tuple[str, bool, str]] = []
 
 
-def op(name: str, **kwargs):
-    req = urllib.request.Request(f"{API}/api/op/{name}", data=json.dumps(kwargs).encode(),
+def op(op_name: str, **kwargs):
+    req = urllib.request.Request(f"{API}/api/op/{op_name}", data=json.dumps(kwargs).encode(),
                                  headers={"content-type": "application/json"}, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=60) as r:
             return json.loads(r.read())
     except urllib.error.HTTPError as e:
-        raise RuntimeError(f"{name}: {e.code} {e.read().decode()[:300]}") from e
+        raise RuntimeError(f"{op_name}: {e.code} {e.read().decode()[:300]}") from e
 
 
 def mcp(method: str, params: dict | None = None):
@@ -56,7 +56,37 @@ def stage0():
     check("S0 MCP tools/list", tools)
 
 
-STAGES = [stage0]
+SHAPE = {"type": "object", "required": ["k", "x"], "properties": {
+    "k": {"type": "string", "x-role": "dimension"}, "x": {"type": "number", "x-role": "measure", "x-unit": "GBP"}}}
+
+
+def stage1():
+    ctx = {}
+
+    def propose():
+        r = op("propose_schema", name="smoke_view", question="smoke?", schema=SHAPE, grain="one row per k",
+               scope=["smoke"], preview=[{"k": "a", "x": 1}], rationale="smoke test")
+        assert not r["warnings"], r["warnings"]
+        ctx.update(view=r["view_id"], first=r["id"])
+    check("S1 propose_schema (new view)", propose)
+
+    def revise():
+        op("comment", target_id=ctx["first"], text="add y")
+        r = op("propose_schema", view_id=ctx["view"], parent_id=ctx["first"], schema=SHAPE, grain="g",
+               scope=[], preview=[], rationale="revision")
+        ctx["second"] = r["id"]
+        d = op("decide", target_id=r["id"], decision="approve")
+        assert d["status"] == "approved", d
+    check("S1 comment + sibling + approve", revise)
+
+    def head():
+        v = op("get_view", view_id=ctx["view"])
+        assert v["head"]["schema"] == ctx["second"], v["head"]
+        assert v["comments"].get(ctx["first"]), "comment missing"
+    check("S1 get_view head + comments", head)
+
+
+STAGES = [stage0, stage1]
 
 if __name__ == "__main__":
     upto = int(sys.argv[sys.argv.index("--stage") + 1]) if "--stage" in sys.argv else len(STAGES) - 1
