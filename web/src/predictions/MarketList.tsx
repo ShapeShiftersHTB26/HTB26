@@ -1,90 +1,192 @@
-import { useConnection } from "@solana/wallet-adapter-react";
-import { PublicKey } from "@solana/web3.js";
-import { useState } from "react";
-import { MarketInfo, pmApi } from "./api";
-import { useAppConfig } from "./context";
+import { useMemo, useState } from "react";
+import type { MarketInfo } from "./api";
 import CreateMarket from "./CreateMarket";
-import { usePoll } from "./hooks";
-import { loadL2, mid } from "./solana";
-import { timeLeft } from "./util";
+import { Quote, useMarkets } from "./hooks";
+import { InsightCard } from "./Insights";
+import { useMode } from "./mode";
+import { Gauge, Modal, Skeleton, Spinner } from "./ui";
+import { cents, countdown, dateLabel, marketHref, Outcome, phase, Phase } from "./util";
 
-export const marketHref = (id: number) => `#/predictions/market/${id}`;
+type Filter = "all" | "open" | "awaiting" | "resolved";
+const FILTERS: [Filter, string][] = [
+  ["all", "All"],
+  ["open", "Open"],
+  ["awaiting", "Awaiting result"],
+  ["resolved", "Resolved"],
+];
+const ORDER: Record<Phase, number> = { open: 0, pending: 1, awaiting: 2, resolved: 3, failed: 4 };
+const matches = (f: Filter, p: Phase) => f === "all" || p === f || (f === "open" && p === "pending");
 
 export default function MarketList() {
-  const { connection } = useConnection();
-  const { addrs } = useAppConfig();
-  const [markets, setMarkets] = useState<MarketInfo[] | null>(null);
-  const [probs, setProbs] = useState<Record<number, number>>({});
-  const [err, setErr] = useState<string | null>(null);
+  const { mode } = useMode();
+  const insights = mode === "insights";
+  const { markets, quotes, err, refresh } = useMarkets();
+  const [filter, setFilter] = useState<Filter>("all");
+  const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
 
-  const refresh = usePoll(
-    async () => {
-      try {
-        const ms = await pmApi.markets();
-        setMarkets(ms);
-        setErr(null);
-        const entries = await Promise.all(
-          ms
-            .filter((m) => m.status === "active" && m.yes_book)
-            .map(async (m) => {
-              const l2 = await loadL2(connection, addrs.openbookId, new PublicKey(m.yes_book!.ob_market), 1).catch(() => null);
-              const p = l2 ? mid(l2) : null;
-              return [m.id, p ?? m.initial_price_cents / 100] as const;
-            }),
-        );
-        setProbs(Object.fromEntries(entries));
-      } catch (e) {
-        setErr((e as Error).message);
-      }
-    },
-    5000,
-    [],
+  const shown = useMemo(() => (markets ?? []).filter((m) => phase(m) !== "failed"), [markets]);
+  const counts = useMemo(
+    () => Object.fromEntries(FILTERS.map(([f]) => [f, shown.filter((m) => matches(f, phase(m))).length])) as Record<Filter, number>,
+    [shown],
   );
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return shown
+      .filter((m) => matches(filter, phase(m)) && (!q || m.question.toLowerCase().includes(q)))
+      .sort((a, b) => {
+        const pa = phase(a);
+        const pb = phase(b);
+        if (pa !== pb) return ORDER[pa] - ORDER[pb];
+        // open markets: closing soonest first; the rest: newest first
+        return pa === "open" ? +new Date(a.resolution_time) - +new Date(b.resolution_time) : b.id - a.id;
+      });
+  }, [shown, filter, query]);
 
   return (
     <div className="pm-list">
-      <div className="pm-row pm-between pm-list-head">
-        <h2>Prediction markets</h2>
-        {!creating && (
-          <button className="pm-btn pm-primary pm-inline" onClick={() => setCreating(true)}>+ Create market</button>
+      <div className="pm-hero">
+        {insights ? (
+          <div>
+            <h1>What's likely to happen?</h1>
+            <p className="pm-sub">Live odds on real-world questions, set by people putting money on the outcome.</p>
+          </div>
+        ) : (
+          <div>
+            <h1>Markets</h1>
+            <p className="pm-sub">Trade on how real-world questions resolve. Prices are probabilities: 63¢ means a 63% chance.</p>
+          </div>
+        )}
+        <button className={`pm-btn pm-btn-lg ${insights ? "pm-btn-soft" : "pm-btn-primary"}`} onClick={() => setCreating(true)}>
+          {insights ? "+ Ask a question" : "+ Create market"}
+        </button>
+      </div>
+
+      <div className="pm-toolbar">
+        <div className="pm-tabs" role="tablist">
+          {FILTERS.map(([f, label]) => (
+            <button key={f} role="tab" aria-selected={filter === f} className={filter === f ? "on" : ""} onClick={() => setFilter(f)}>
+              {label}
+              {markets && <span className="pm-count">{counts[f]}</span>}
+            </button>
+          ))}
+        </div>
+        <label className="pm-search">
+          <svg viewBox="0 0 20 20" aria-hidden>
+            <circle cx="9" cy="9" r="6" />
+            <path d="M14 14l4 4" />
+          </svg>
+          <input placeholder="Search markets" value={query} onChange={(e) => setQuery(e.target.value)} />
+        </label>
+      </div>
+
+      {err && <div className="pm-banner err">Couldn't load markets: {err}</div>}
+
+      <div className="pm-grid">
+        {!markets &&
+          Array.from({ length: 6 }, (_, i) => (
+            <div key={i} className="pm-mcard">
+              <div className="pm-mcard-top">
+                <div style={{ flex: 1 }}>
+                  <Skeleton h={18} />
+                  <div style={{ height: 8 }} />
+                  <Skeleton h={18} w="60%" />
+                </div>
+                <Skeleton h={46} w={58} />
+              </div>
+              <Skeleton h={38} />
+            </div>
+          ))}
+        {visible.map((m) =>
+          insights ? <InsightCard key={m.id} m={m} prob={quotes[m.id]?.prob ?? null} /> : <MarketCard key={m.id} m={m} quote={quotes[m.id]} />,
         )}
       </div>
-      {creating && (
-        <CreateMarket
-          onClose={() => setCreating(false)}
-          onCreated={(id) => {
-            setCreating(false);
-            refresh();
-            window.location.hash = marketHref(id);
-          }}
-        />
+
+      {markets && !visible.length && (
+        <div className="pm-empty">
+          {query ? (
+            <>No markets match “{query}”.</>
+          ) : (
+            <>
+              Nothing here yet.{" "}
+              <button className="pm-link" onClick={() => setCreating(true)}>
+                Create the first market
+              </button>
+            </>
+          )}
+        </div>
       )}
-      {err && <div className="pm-card error">{err}</div>}
-      {!markets && !err && <div className="pm-card">Loading markets…</div>}
-      {markets && !markets.length && <div className="pm-card muted">No markets yet. Create the first one.</div>}
-      <div className="pm-grid">
-        {(markets ?? []).map((m) => {
-          const p = probs[m.id];
-          return (
-            <a key={m.id} className="pm-card pm-market-card" href={marketHref(m.id)}>
-              <div className="pm-row pm-between">
-                <span className={`pm-status ${m.status}`}>{m.status === "resolved" ? `resolved ${m.outcome?.toUpperCase()}` : m.status}</span>
-                <span className="muted small">{timeLeft(m.resolution_time)}</span>
-              </div>
-              <h3>{m.question}</h3>
-              {m.status === "active" && (
-                <div className="pm-prob-row">
-                  <div className="pm-prob-bar">
-                    <div className="pm-prob-fill" style={{ width: `${((p ?? 0.5) * 100).toFixed(1)}%` }} />
-                  </div>
-                  <span className="pm-prob">{p !== undefined ? `${(p * 100).toFixed(0)}%` : "—"}</span>
-                </div>
-              )}
-              {m.status === "failed" && <div className="muted small">{m.error}</div>}
-            </a>
-          );
-        })}
+
+      {creating && (
+        <Modal title={insights ? "Ask a question" : "Create a market"} onClose={() => setCreating(false)}>
+          <CreateMarket
+            onCreated={(id) => {
+              setCreating(false);
+              refresh();
+              window.location.hash = marketHref(id);
+            }}
+          />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function MarketCard({ m, quote }: { m: MarketInfo; quote?: Quote }) {
+  const p = phase(m);
+  const go = (buy?: Outcome) => (window.location.hash = marketHref(m.id, buy));
+  return (
+    <div
+      className={`pm-mcard ${p}`}
+      role="link"
+      tabIndex={0}
+      onClick={() => go()}
+      onKeyDown={(e) => e.key === "Enter" && go()}
+    >
+      <div className="pm-mcard-top">
+        <h3>
+          <a href={marketHref(m.id)} onClick={(e) => e.stopPropagation()}>
+            {m.question}
+          </a>
+        </h3>
+        {(p === "open" || p === "awaiting") && <Gauge p={quote?.prob ?? null} />}
+        {p === "resolved" && <span className={`pm-outcome ${m.outcome}`}>{m.outcome === "void" ? "Void" : m.outcome === "yes" ? "Yes" : "No"}</span>}
+      </div>
+
+      {p === "open" && (
+        <div className="pm-mcard-actions">
+          {(["yes", "no"] as const).map((o) => (
+            <button
+              key={o}
+              className={`pm-buy ${o}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                go(o);
+              }}
+            >
+              Buy {o === "yes" ? "Yes" : "No"}
+              <span>{quote?.[o] != null ? cents(quote[o]!) : ""}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {p === "pending" && (
+        <div className="pm-mcard-note">
+          <Spinner /> Seeding liquidity…
+        </div>
+      )}
+      {p === "awaiting" && <div className="pm-mcard-note">Trading closed · waiting for the result</div>}
+      {p === "resolved" && <div className="pm-mcard-note">Resolved · winners can redeem on the market page</div>}
+
+      <div className="pm-mcard-foot">
+        <span>
+          {p === "open" || p === "pending"
+            ? `Closes in ${countdown(m.resolution_time) ?? "a moment"}`
+            : p === "resolved" && m.resolved_at
+              ? `Resolved ${dateLabel(m.resolved_at)}`
+              : `Closed ${dateLabel(m.resolution_time)}`}
+        </span>
+        <span>#{m.id}</span>
       </div>
     </div>
   );

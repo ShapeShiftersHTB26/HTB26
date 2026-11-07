@@ -1,16 +1,19 @@
 // Predictions tab: on-chain YES/NO prediction markets (prediction-market/ backend + OpenBook v2).
-// Loaded lazily by App so the Solana libraries don't weigh on the Main tab.
-import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react";
-import { WalletModalProvider, WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+// Loaded lazily by App so the Solana libraries don't weigh on the other tabs.
+import { ConnectionProvider, useWallet, WalletProvider } from "@solana/wallet-adapter-react";
+import { useWalletModal, WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 import "@solana/wallet-adapter-react-ui/styles.css";
 import { ReactNode, useEffect, useState } from "react";
 import { pmApi, PublicConfig } from "./api";
-import { ConfigCtx } from "./context";
-import { useBalances } from "./hooks";
+import { ConfigCtx, useAppConfig } from "./context";
+import { useBalances, useFaucet } from "./hooks";
 import MarketList from "./MarketList";
 import MarketPage from "./MarketPage";
+import { ModeProvider, ModeSwitch, useMode } from "./mode";
 import "./predictions.css";
 import { addrsFromConfig } from "./solana";
+import { Menu, Skeleton, Spinner, ToastProvider, useToast, useTween } from "./ui";
+import { explorer, fmt, short, usd } from "./util";
 import { SignerProvider, useSigner } from "./wallet";
 
 export default function Predictions({ nav, marketId }: { nav: ReactNode; marketId: number | null }) {
@@ -37,23 +40,28 @@ export default function Predictions({ nav, marketId }: { nav: ReactNode; marketI
 
   if (!cfg) {
     return (
-      <div className="app">
-        <header>
+      <div className="app pm-root">
+        <header className="pm-header">
           <strong>Backtrace</strong>
           {nav}
         </header>
         <div className="pm">
           <div className="pm-main">
-            <div className="pm-card">
-              {err ? (
-                <>
-                  Prediction-market backend unreachable ({err}). Retrying… Is <code>prediction-market-backend</code> running
-                  (<code>docker compose up</code>)?
-                </>
-              ) : (
-                "Loading…"
-              )}
-            </div>
+            {err ? (
+              <div className="pm-banner">
+                <Spinner /> Waiting for the prediction-market backend ({err}). Is <code>prediction-market-backend</code>{" "}
+                running?
+              </div>
+            ) : (
+              <div className="pm-grid">
+                {Array.from({ length: 6 }, (_, i) => (
+                  <div key={i} className="pm-mcard">
+                    <Skeleton h={44} />
+                    <Skeleton h={36} />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -67,12 +75,11 @@ export default function Predictions({ nav, marketId }: { nav: ReactNode; marketI
         <WalletProvider wallets={[]} autoConnect>
           <WalletModalProvider>
             <SignerProvider>
-              <div className="app">
-                <PmHeader nav={nav} />
-                <div className="pm">
-                  <div className="pm-main">{marketId === null ? <MarketList /> : <MarketPage id={marketId} />}</div>
-                </div>
-              </div>
+              <ToastProvider>
+                <ModeProvider>
+                  <Shell nav={nav} marketId={marketId} />
+                </ModeProvider>
+              </ToastProvider>
             </SignerProvider>
           </WalletModalProvider>
         </WalletProvider>
@@ -81,47 +88,100 @@ export default function Predictions({ nav, marketId }: { nav: ReactNode; marketI
   );
 }
 
-function PmHeader({ nav }: { nav: ReactNode }) {
-  const { publicKey, kind, useBurner } = useSigner();
-  const { bal, refresh } = useBalances(null);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+/** Deterministic two-tone avatar from the address. */
+function avatar(pk: string): string {
+  let h = 0;
+  for (const c of pk) h = (h * 31 + c.charCodeAt(0)) % 360;
+  return `linear-gradient(135deg, hsl(${h} 75% 62%), hsl(${(h + 70) % 360} 75% 52%))`;
+}
 
-  const faucet = async () => {
-    if (!publicKey) return;
-    setBusy(true);
-    setMsg(null);
-    try {
-      const r = await pmApi.faucet(publicKey.toBase58());
-      setMsg(`+${r.musdc} mUSDC`);
-      refresh();
-    } catch (e) {
-      setMsg((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
+function Shell({ nav, marketId }: { nav: ReactNode; marketId: number | null }) {
+  const { mode } = useMode();
   return (
-    <header className="pm-header">
-      <strong>Backtrace</strong>
-      {nav}
-      <div className="pm-header-right">
-        {publicKey && (
-          <span className="pm-balances" title={publicKey.toBase58()}>
-            {bal.usdc.toLocaleString(undefined, { maximumFractionDigits: 2 })} mUSDC · {bal.sol.toFixed(3)} SOL
-          </span>
-        )}
-        {publicKey && (
-          <button onClick={faucet} disabled={busy}>
-            {busy ? "Requesting…" : "Faucet"}
+    <div className={`app pm-root pm-${mode}`}>
+      <header className="pm-header">
+        <strong>Backtrace</strong>
+        {nav}
+        <div className="pm-header-right">
+          <ModeSwitch />
+          {/* Insights is read-only: wallets only matter when trading. */}
+          {mode === "trading" && <WalletControls />}
+        </div>
+      </header>
+      <div className="pm">
+        <div className="pm-main" key={mode}>
+          {marketId === null ? <MarketList /> : <MarketPage key={marketId} id={marketId} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WalletControls() {
+  const { publicKey, kind, useBurner } = useSigner();
+  const { disconnect } = useWallet();
+  const { setVisible } = useWalletModal();
+  const { cfg } = useAppConfig();
+  const { bal } = useBalances(null);
+  const faucet = useFaucet();
+  const toast = useToast();
+  const cash = useTween(publicKey ? bal.usdc : null);
+  const pk = publicKey?.toBase58();
+
+  return pk ? (
+    <>
+      <div className="pm-cash" title={`${fmt(bal.sol, 4)} SOL for transaction fees`}>
+        <span className="pm-cash-label">Cash</span>
+        <span className="pm-cash-num">{usd(cash ?? 0)}</span>
+      </div>
+      <button className="pm-btn pm-btn-soft" onClick={faucet.claim} disabled={faucet.busy}>
+        {faucet.busy ? <Spinner /> : "+"} Get funds
+      </button>
+      <Menu
+        button={(open) => (
+          <button className={`pm-account${open ? " on" : ""}`} aria-haspopup="menu">
+            <span className="pm-avatar" style={{ background: avatar(pk) }} />
+            <span className="pm-account-addr">{short(pk)}</span>
+            {kind === "burner" && <span className="pm-tag">demo</span>}
+            <span className="pm-caret">▾</span>
           </button>
         )}
-        {msg && <span className="muted small">{msg}</span>}
-        <button onClick={() => useBurner(kind !== "burner")}>{kind === "burner" ? "Leave burner" : "Burner wallet"}</button>
-        {kind !== "burner" && <WalletMultiButton />}
-        {kind === "burner" && publicKey && <span className="pm-pill">burner {publicKey.toBase58().slice(0, 4)}…</span>}
-      </div>
-    </header>
+      >
+        {(close) => (
+          <>
+            <button
+              onClick={() => {
+                navigator.clipboard?.writeText(pk);
+                toast({ kind: "info", title: "Address copied" });
+                close();
+              }}
+            >
+              Copy address
+            </button>
+            <a href={explorer("address", pk, cfg.rpc_url)} target="_blank" rel="noreferrer" onClick={close}>
+              View on explorer ↗
+            </a>
+            <div className="pm-menu-sep" />
+            {kind === "burner" ? (
+              <button onClick={() => (useBurner(false), close())}>Leave demo wallet</button>
+            ) : (
+              <>
+                <button onClick={() => (useBurner(true), close())}>Switch to demo wallet</button>
+                <button onClick={() => (disconnect(), close())}>Disconnect</button>
+              </>
+            )}
+          </>
+        )}
+      </Menu>
+    </>
+  ) : (
+    <>
+      <button className="pm-btn pm-btn-ghost" onClick={() => useBurner(true)} title="A throwaway wallet stored in this browser">
+        Try demo wallet
+      </button>
+      <button className="pm-btn pm-btn-primary" onClick={() => setVisible(true)}>
+        Connect wallet
+      </button>
+    </>
   );
 }
