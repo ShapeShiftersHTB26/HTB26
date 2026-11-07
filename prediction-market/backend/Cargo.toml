@@ -1,0 +1,42 @@
+[package]
+name = "pm-backend"
+version = "0.1.0"
+edition = "2021"
+description = "Prediction market backend: market creation API, faucet, bots (market maker, takers, crank)"
+
+# Standalone project — deliberately NOT part of the Anchor workspace so dependency
+# versions of the on-chain program and the client don't have to unify.
+[workspace]
+
+[dependencies]
+# On-chain program: typed instruction + account builders (no entrypoint).
+prediction-market = { path = "../programs/prediction-market", features = ["no-entrypoint"] }
+anchor-lang = "1.1.2"
+anchor-spl = "1.1.2"
+
+solana-rpc-client = "3"
+solana-rpc-client-api = "3"
+solana-commitment-config = "3"
+solana-keypair = "3"
+solana-signer = "3"
+solana-transaction = "3"
+solana-message = "3"
+solana-system-interface = { version = "2", features = ["bincode"] }
+solana-compute-budget-interface = { version = "3", features = ["borsh"] }
+
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "macros", "migrate", "chrono"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dotenvy = "0.15"
+rand = "0.8"
+rand_distr = "0.4"
+sha2 = "0.10"
+borsh = { version = "1", features = ["derive"] }

@@ -1,0 +1,8 @@
+**/target
+**/node_modules
+app/dist
+keys
+**/.env
+test-ledger
+.anchor
+.git

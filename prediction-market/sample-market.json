@@ -1,0 +1,9 @@
+{
+  "question": "Will the HM Land Registry average UK house price for December 2026 be above November 2026?",
+  "description": "Resolves YES if the December 2026 average price in the HM Land Registry Price Paid data is higher than November 2026.",
+  "resolution_time": "2026-12-31T23:59:59Z",
+  "initial_price_cents": 55,
+  "seed_sets": 1000,
+  "levels": 5,
+  "level_size": 50
+}

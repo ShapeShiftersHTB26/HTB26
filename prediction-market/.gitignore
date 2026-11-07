@@ -1,0 +1,14 @@
+.anchor
+.DS_Store
+target
+**/*.rs.bk
+node_modules
+test-ledger
+.yarn
+.surfpool
+keys/
+backend/target
+backend/.env
+app/.env
+app/node_modules
+app/dist

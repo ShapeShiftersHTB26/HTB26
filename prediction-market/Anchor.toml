@@ -1,0 +1,22 @@
+skip_local_validator = true
+
+[toolchain]
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.devnet]
+prediction_market = "5XrnC3eMafJx5ckPKk6Mw5nvX1TJAQ2VaU9xEXR4nLyE"
+
+[programs.localnet]
+prediction_market = "5XrnC3eMafJx5ckPKk6Mw5nvX1TJAQ2VaU9xEXR4nLyE"
+
+[provider]
+cluster = "localnet"
+wallet = "keys/admin.json"
+
+[scripts]
+test = "cargo test"
+
+[hooks]
