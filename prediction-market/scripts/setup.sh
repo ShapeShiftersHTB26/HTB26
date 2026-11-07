@@ -60,11 +60,5 @@ else
   echo "backend/.env exists, not overwriting"
 fi
 
-if [ ! -f app/.env ]; then
-  cat > app/.env <<EOF
-VITE_API_URL=http://localhost:8080
-EOF
-fi
-
 (cd backend && cargo run --quiet -- init-config)
 echo "setup done. Next: cd backend && cargo run"

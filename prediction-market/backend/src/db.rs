@@ -33,6 +33,7 @@ pub struct MarketRow {
     pub error: Option<String>,
     pub created_at: DateTime<Utc>,
     pub resolved_at: Option<DateTime<Utc>>,
+    pub query_hash: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, FromRow)]
@@ -90,6 +91,7 @@ impl OrderbookRow {
 
 pub struct NewMarket<'a> {
     pub question: &'a str,
+    pub query_hash: &'a str,
     pub description: Option<&'a str>,
     pub resolution_time: DateTime<Utc>,
     pub initial_price_cents: i32,
@@ -100,8 +102,8 @@ pub struct NewMarket<'a> {
 
 pub async fn insert_pending_market(db: &PgPool, m: &NewMarket<'_>) -> Result<i64> {
     let id: (i64,) = sqlx::query_as(
-        "insert into markets (question, description, resolution_time, initial_price_cents, seed_sets, levels, level_size)
-         values ($1, $2, $3, $4, $5, $6, $7) returning id",
+        "insert into markets (question, description, resolution_time, initial_price_cents, seed_sets, levels, level_size, query_hash)
+         values ($1, $2, $3, $4, $5, $6, $7, $8) returning id",
     )
     .bind(m.question)
     .bind(m.description)
@@ -110,9 +112,20 @@ pub async fn insert_pending_market(db: &PgPool, m: &NewMarket<'_>) -> Result<i64
     .bind(m.seed_sets)
     .bind(m.levels)
     .bind(m.level_size)
+    .bind(m.query_hash)
     .fetch_one(db)
     .await?;
     Ok(id.0)
+}
+
+/// Live (non-failed) market for a query hash, if any.
+pub async fn find_by_query_hash(db: &PgPool, hash: &str) -> Result<Option<i64>> {
+    let row: Option<(i64,)> =
+        sqlx::query_as("select id from markets where query_hash = $1 and status <> 'failed' order by id limit 1")
+            .bind(hash)
+            .fetch_optional(db)
+            .await?;
+    Ok(row.map(|r| r.0))
 }
 
 pub async fn mark_failed(db: &PgPool, id: i64, error: &str, txs: &[String]) -> Result<()> {

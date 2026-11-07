@@ -1,5 +1,5 @@
-// End-to-end flow against a running backend + validator, using the same code as the UI.
-//   ADMIN_API_KEY=... pnpm e2e        (API_URL defaults to http://localhost:8080)
+// Prediction markets end-to-end flow against a running backend + validator, using the Predictions tab's code.
+//   ADMIN_API_KEY=dev-admin-key npm run pm:e2e      (API_URL defaults to http://localhost:8080)
 // Creates a market resolving in ~70s, trades both books as a fresh burner wallet,
 // mints/merges sets, resolves YES via the admin API, then redeems.
 import { Connection, Keypair, PublicKey, Transaction } from '@solana/web3.js';
@@ -14,8 +14,8 @@ import {
   redeemIx,
   tokenBalance,
   TOKEN,
-} from '../src/solana';
-import type { MarketInfo, PublicConfig } from '../src/api';
+} from '../src/predictions/solana';
+import type { MarketInfo, PublicConfig } from '../src/predictions/api';
 
 const API = process.env.API_URL ?? 'http://localhost:8080';
 const KEY = process.env.ADMIN_API_KEY ?? '';

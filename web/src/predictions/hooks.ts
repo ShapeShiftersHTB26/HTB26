@@ -2,7 +2,7 @@ import { useConnection } from '@solana/wallet-adapter-react';
 import { PublicKey } from '@solana/web3.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MarketInfo } from './api';
-import { useAppConfig } from './main';
+import { useAppConfig } from './context';
 import { L2, loadL2, mid, tokenBalance } from './solana';
 import { useSigner } from './wallet';
 

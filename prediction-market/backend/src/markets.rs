@@ -45,8 +45,9 @@ fn d_level_size() -> i64 { 50 }
 
 impl CreateMarketReq {
     pub fn validate(&self) -> Result<()> {
-        if self.question.trim().is_empty() {
-            bail!("question is required");
+        let q = self.question.trim();
+        if q.len() < 10 || q.len() > 300 {
+            bail!("question must be 10-300 characters");
         }
         if !(2..=98).contains(&self.initial_price_cents) {
             bail!("initial_price_cents must be 2..=98");
@@ -86,6 +87,20 @@ pub fn bid_notional(bids: &[Quote]) -> u64 {
     bids.iter().map(|q| (q.base_lots * q.price_lots * 100) as u64).sum()
 }
 
+pub struct Created {
+    pub id: i64,
+    /// false when an existing market with the same query was returned.
+    pub created: bool,
+}
+
+/// sha256 (hex) of the question, normalized: trimmed, lowercased, whitespace collapsed.
+/// Today it de-duplicates markets; later it becomes the market id.
+pub fn query_hash(question: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let normalized = question.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase();
+    Sha256::digest(normalized.as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
+}
+
 pub struct Markets {
     /// Market creation is serialized: open-orders account addresses depend on a per-owner counter.
     create_lock: Mutex<()>,
@@ -96,13 +111,19 @@ impl Markets {
         Self { create_lock: Mutex::new(()) }
     }
 
-    pub async fn create(&self, chain: &Chain, db: &PgPool, req: &CreateMarketReq) -> Result<i64> {
+    /// Create + seed a market. If a live market with the same query hash exists, returns it instead.
+    pub async fn create(&self, chain: &Chain, db: &PgPool, req: &CreateMarketReq) -> Result<Created> {
         req.validate()?;
+        let hash = query_hash(&req.question);
         let _guard = self.create_lock.lock().await;
+        if let Some(id) = db::find_by_query_hash(db, &hash).await? {
+            return Ok(Created { id, created: false });
+        }
         let id = db::insert_pending_market(
             db,
             &db::NewMarket {
                 question: req.question.trim(),
+                query_hash: &hash,
                 description: req.description.as_deref(),
                 resolution_time: req.resolution_time,
                 initial_price_cents: req.initial_price_cents as i32,
@@ -117,7 +138,7 @@ impl Markets {
         match create_onchain(chain, db, req, id, &mut txs).await {
             Ok(()) => {
                 tracing::info!(id, "market created");
-                Ok(id)
+                Ok(Created { id, created: true })
             }
             Err(e) => {
                 let msg = format!("{e:#}");

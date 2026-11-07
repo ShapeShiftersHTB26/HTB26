@@ -9,6 +9,3 @@ test-ledger
 keys/
 backend/target
 backend/.env
-app/.env
-app/node_modules
-app/dist

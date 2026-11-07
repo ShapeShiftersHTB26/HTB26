@@ -1,15 +1,13 @@
-// On-chain helpers: our program's set instructions, OpenBook take orders, book + balance reads.
+// Prediction markets — on-chain helpers: our program's set instructions, OpenBook take orders, book + balance reads.
 import { AnchorProvider } from '@coral-xyz/anchor';
 import { Market, OpenBookV2Client } from '@openbook-dex/openbook-v2';
 import {
-  ASSOCIATED_TOKEN_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountIdempotentInstruction,
   getAssociatedTokenAddressSync,
 } from '@solana/spl-token';
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js';
 import BN from 'bn.js';
-import idl from './idl/prediction_market.json';
 import type { MarketInfo, OrderbookRow, PublicConfig } from './api';
 
 export const TOKEN = 1_000_000; // 6 decimals
@@ -36,10 +34,17 @@ export const createAtaIx = (payer: PublicKey, owner: PublicKey, mint: PublicKey)
 
 // ---------------- prediction_market program ----------------
 
+// Anchor discriminators (sha256("global:<name>")[..8]) from target/idl/prediction_market.json.
+const DISCRIMINATORS: Record<string, number[]> = {
+  mint_complete_set: [70, 222, 130, 148, 234, 103, 137, 61],
+  merge_complete_set: [245, 171, 74, 49, 59, 192, 150, 216],
+  redeem: [184, 12, 86, 149, 70, 196, 97, 225],
+};
+
 function disc(name: string): Buffer {
-  const ix = (idl as { instructions: { name: string; discriminator: number[] }[] }).instructions.find((i) => i.name === name);
-  if (!ix) throw new Error(`unknown instruction ${name}`);
-  return Buffer.from(ix.discriminator);
+  const d = DISCRIMINATORS[name];
+  if (!d) throw new Error(`unknown instruction ${name}`);
+  return Buffer.from(d);
 }
 
 const u64 = (n: bigint | number) => new BN(n.toString()).toArrayLike(Buffer, 'le', 8);
@@ -209,4 +214,3 @@ export function newTx(ixs: TransactionInstruction[]): Transaction {
   return new Transaction().add(...ixs);
 }
 
-export { ASSOCIATED_TOKEN_PROGRAM_ID };

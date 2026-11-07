@@ -6,6 +6,7 @@ import { Keypair, PublicKey, SendTransactionError, Transaction } from '@solana/w
 import { createContext, ReactNode, useCallback, useContext, useMemo, useState } from 'react';
 
 const BURNER_KEY = 'pm-burner-secret';
+const USE_BURNER_KEY = 'pm-use-burner';
 
 interface SignerCtx {
   publicKey: PublicKey | null;
@@ -45,7 +46,7 @@ export function SignerProvider({ children }: { children: ReactNode }) {
   const wallet = useWallet();
   const [burner, setBurner] = useState<Keypair | null>(() => {
     try {
-      return localStorage.getItem('pm-use-burner') === '1' ? loadBurner() : null;
+      return localStorage.getItem(USE_BURNER_KEY) === '1' ? loadBurner() : null;
     } catch {
       return null;
     }
@@ -53,7 +54,7 @@ export function SignerProvider({ children }: { children: ReactNode }) {
 
   const useBurner = useCallback((on: boolean) => {
     try {
-      localStorage.setItem('pm-use-burner', on ? '1' : '0');
+      localStorage.setItem(USE_BURNER_KEY, on ? '1' : '0');
     } catch {
       /* ignore */
     }

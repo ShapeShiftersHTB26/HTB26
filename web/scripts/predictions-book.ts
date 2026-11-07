@@ -1,6 +1,6 @@
-// Print both order books of a market:  pnpm book <market id>
+// Print both order books of a prediction market:  npm run pm:book -- <market id>
 import { Connection, PublicKey } from '@solana/web3.js';
-import { loadL2 } from '../src/solana';
+import { loadL2 } from '../src/predictions/solana';
 
 const API = process.env.API_URL ?? 'http://localhost:8080';
 

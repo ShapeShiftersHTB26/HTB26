@@ -125,8 +125,8 @@ pub async fn seed_demo_markets(chain: &Chain, db: &sqlx::PgPool, markets: &Marke
             levels: 5,
             level_size: 50,
         };
-        let id = markets.create(chain, db, &req).await?;
-        tracing::info!(id, question, "demo market created");
+        let c = markets.create(chain, db, &req).await?;
+        tracing::info!(id = c.id, question, "demo market created");
     }
     Ok(())
 }

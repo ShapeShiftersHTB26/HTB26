@@ -8,6 +8,7 @@ description: Run, reset, seed and smoke-test the Backtrace stack (docker compose
 ## Start
 ```powershell
 docker compose up --build -d          # memgraph:7687, lab:3000, api:8000, web:5173
+                                      # + prediction-market-{db:5433, validator:8899/8900, backend:8080} (Predictions tab)
 docker compose logs -f api            # watch the api while you work
 python scripts/reset.py               # wipe the graph   (talks to the api over REST)
 python scripts/seed.py                # ingest the seed data from data/raw/   (from S2)

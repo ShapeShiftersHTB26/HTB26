@@ -24,6 +24,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/health", get(health))
         .route("/config", get(public_config))
         .route("/markets", get(list_markets).post(create_market))
+        .route("/public/markets", post(create_market_public))
         .route("/markets/{id}", get(get_market))
         .route("/markets/{id}/resolve", post(resolve_market))
         .route("/markets/{id}/trades", get(market_trades))
@@ -100,9 +101,35 @@ async fn market_trades(State(s): State<Arc<AppState>>, Path(id): Path<i64>) -> A
 async fn create_market(State(s): State<Arc<AppState>>, headers: HeaderMap, Json(req): Json<CreateMarketReq>) -> ApiResult {
     require_admin(&s, &headers)?;
     req.validate().map_err(|e| bad_request(e.to_string()))?;
-    let id = s.markets.create(&s.chain, &s.db, &req).await?;
-    let m = db::get_market(&s.db, id).await?;
+    let c = s.markets.create(&s.chain, &s.db, &req).await?;
+    let m = db::get_market(&s.db, c.id).await?;
     Ok(Json(json!(m)))
+}
+
+/// Anyone can create a market from a question (e.g. a search query). Liquidity is seeded by the
+/// admin wallet with the default ladder. The same question (normalized) returns the existing market.
+#[derive(Deserialize)]
+struct PublicCreateReq {
+    question: String,
+    description: Option<String>,
+    resolution_time: chrono::DateTime<chrono::Utc>,
+    initial_price_cents: Option<i64>,
+}
+
+async fn create_market_public(State(s): State<Arc<AppState>>, Json(req): Json<PublicCreateReq>) -> ApiResult {
+    let req = CreateMarketReq {
+        question: req.question,
+        description: req.description.filter(|d| !d.trim().is_empty()),
+        resolution_time: req.resolution_time,
+        initial_price_cents: req.initial_price_cents.unwrap_or(50),
+        seed_sets: 1000,
+        levels: 5,
+        level_size: 50,
+    };
+    req.validate().map_err(|e| bad_request(e.to_string()))?;
+    let c = s.markets.create(&s.chain, &s.db, &req).await?;
+    let m = db::get_market(&s.db, c.id).await?;
+    Ok(Json(json!({ "created": c.created, "market": m })))
 }
 
 #[derive(Deserialize)]

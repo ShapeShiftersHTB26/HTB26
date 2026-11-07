@@ -1,29 +1,31 @@
 # On-chain Order Book Prediction Market
 
-Binary YES/NO prediction markets on Solana. See [../PLAN.md](../PLAN.md) for the design.
+Binary YES/NO prediction markets on Solana. The UI is the **Predictions** tab of the Backtrace web app (`../web/src/predictions/`). See [PLAN.md](PLAN.md) for the design.
 
 | Part | Path | What it does |
 |---|---|---|
 | Anchor program | `programs/prediction-market` | mUSDC collateral, mint/merge YES+NO sets, admin resolution, redemption (Void pays 0.5 per token) |
 | Order books | OpenBook v2 `opnb2LAf…` (already deployed) | Two books per market: YES/mUSDC and NO/mUSDC. 1¢ ticks, 0.01-token lots, books expire at resolution time |
-| Backend | `backend/` (Rust, axum + sqlx) | Create markets + seed both books, resolve, faucet, Postgres records, bot loop (market maker, 5 taker bots, crank) |
-| Frontend | `app/` (React + Vite) | Market list, both books, trade YES/NO, positions, mint/merge, redeem. Works with a browser wallet or a built-in burner wallet |
+| Backend | `backend/` (Rust, axum + sqlx) | Create markets (admin or public) + seed both books, resolve, faucet, Postgres records, bot loop (market maker, 5 taker bots, crank) |
+| Frontend | `../web/src/predictions/` | Predictions tab: market list, **Create market**, both books, trade YES/NO, positions, mint/merge, redeem. Works with a browser wallet or a built-in burner wallet |
 
-## Quickest: everything in Docker
+## Run everything in Docker (from the repo root)
 
 ```bash
-docker compose up --build        # first build takes a while (compiles the program + backend)
+docker compose up -d --build     # first build takes a while (compiles the program + backend)
 ```
+
+The prediction-market services in the root `docker-compose.yml` all start with `prediction-market-`:
 
 | Service | URL | Notes |
 |---|---|---|
-| UI | http://localhost:5173 | Click **Burner wallet**, then **Faucet**, then trade |
-| API | http://localhost:8080 | Admin header `x-admin-key: dev-admin-key` |
-| Solana RPC | http://localhost:8899 (ws :8900) | Local validator with `prediction_market` + OpenBook v2 loaded at genesis |
-| Postgres | localhost:5433 | `pm` / `pm` |
+| `web` (shared) | http://localhost:5173/#/predictions | **Predictions** tab. Click **Burner wallet**, then **Faucet**, then trade or **Create market** |
+| `prediction-market-backend` | http://localhost:8080 | Admin header `x-admin-key: dev-admin-key`. The web app reaches it through the `/pm-api` Vite proxy |
+| `prediction-market-validator` | http://localhost:8899 (ws :8900) | Local validator with `prediction_market` + OpenBook v2 loaded at genesis |
+| `prediction-market-db` | localhost:5433 | `pm` / `pm` |
 
 On first start the backend:
-1. generates the admin and mUSDC mint keypairs (stored in the `keys` volume);
+1. generates the admin and mUSDC mint keypairs (stored in the `prediction-market-keys` volume);
 2. airdrops SOL to the admin;
 3. creates the mUSDC mint and initializes the program Config;
 4. creates **two demo markets**: one closes in 7 days, the other in 15 minutes so you can try resolve + redeem.
@@ -35,14 +37,17 @@ The bots start trading right away.
 curl -X POST localhost:8080/markets/2/resolve -H 'x-admin-key: dev-admin-key' \
   -H 'content-type: application/json' -d '{"outcome":"yes"}'
 
-# full scripted flow against the containers
-cd app && ADMIN_API_KEY=dev-admin-key pnpm e2e
+# full scripted flow against the containers (from web/)
+cd web && ADMIN_API_KEY=dev-admin-key npm run pm:e2e
+npm run pm:book -- 1             # print both live books of market 1 + bot fair price
 
-docker compose down -v           # reset chain, database and keys together
+# reset chain, database and keys together (other services untouched)
+docker compose rm -sfv prediction-market-validator prediction-market-backend prediction-market-db
+docker volume rm htb26_prediction-market-ledger htb26_prediction-market-pgdata htb26_prediction-market-keys
 ```
 
 Notes:
-- The chain (`ledger`) and the database (`pgdata`) persist in volumes and stay consistent across `docker compose down` / `up`. Always reset them together with `down -v`. You also need `down -v` after changing the program, because programs only load at genesis.
+- The chain and the database persist in volumes and stay consistent across `docker compose down` / `up`. Always reset them together (commands above). You also need a reset after changing the program, because programs only load at genesis.
 - Agave publishes only x86_64 Linux binaries, so the validator image is `linux/amd64` and runs under Rosetta on Apple Silicon.
 - **Two Agave versions:**
   - The program is compiled with **v4.1.1** tooling (Anchor 1.1 needs rustc ≥ 1.89).
@@ -51,43 +56,45 @@ Notes:
   You can change either version with the build args in `docker/validator.Dockerfile`.
 - Agave's gossip refuses `0.0.0.0`, so the validator binds to the container's own IP.
 
-## Prerequisites (running without Docker)
+## Creating markets
 
-Solana CLI ≥ 2.x (tested with Agave 4.1), Anchor CLI 1.1.x, Rust, Node 20+ with pnpm, and Postgres (via `docker compose` or a local install).
+- **Anyone:** `POST /public/markets` with `{question, description?, resolution_time, initial_price_cents?}`. This is what the UI's **Create market** button calls.
+  - The admin wallet pays for and seeds both books with the default ladder (5 levels × 50 tokens around the starting price).
+  - The question is normalized (trimmed, lowercased, whitespace collapsed) and hashed with sha256 (`query_hash`).
+  - Sending the same question again returns the existing market (`created: false`).
+  - Later, this hash becomes the on-chain market id. Today the on-chain id is still the database id.
+- **Admin:** `POST /markets` with the same body plus custom `seed_sets`, `levels` and `level_size`.
+
+## Running without Docker
+
+Prerequisites: Solana CLI ≥ 2.x (tested with Agave 4.1), Anchor CLI 1.1.x, Rust, Node 20+ and Postgres.
 
 > If `anchor` resolves to the npm shim (`Only x86_64 / Linux distributed in NPM package`), run setup with `ANCHOR=~/.cargo/bin/anchor`.
 
-## Run locally (no wallet or paid RPC needed)
-
 ```bash
-# 1. Postgres
-docker compose up -d                      # or use a local Postgres and set DATABASE_URL
+# 1. Postgres: a local install, or just the db service
+docker compose up -d prediction-market-db     # then DATABASE_URL=postgres://pm:pm@localhost:5433/pm
 
 # 2. Local validator with the real OpenBook v2 cloned from devnet (keep it running)
 ./scripts/validator.sh
 
 # 3. One-time setup: admin key, mUSDC mint, deploy program, backend/.env, on-chain Config
-./scripts/setup.sh                        # DATABASE_URL=postgres://localhost/pm_dev ./scripts/setup.sh for a local db
+DATABASE_URL=postgres://pm:pm@localhost:5433/pm ./scripts/setup.sh
 
 # 4. Backend (API on :8080, bots start automatically)
 cd backend && cargo run
 
-# 5. Create a market (the admin key is in backend/.env); edit resolution_time first
-curl -X POST localhost:8080/markets -H "x-admin-key: $(grep ADMIN_API_KEY backend/.env | cut -d= -f2)" \
-  -H 'content-type: application/json' -d @sample-market.json
-
-# 6. Frontend
-cd app && pnpm install && pnpm dev        # http://localhost:5173
+# 5. Web app (Predictions tab proxies /pm-api to localhost:8080)
+cd ../../web && npm install && npm run dev    # http://localhost:5173/#/predictions
 ```
 
 In the UI, click **Burner wallet** and then **Faucet** (1,000 mUSDC + 0.05 SOL), and trade. Browser wallets work too, as long as they're pointed at the same RPC.
 
-### Test the whole flow from the command line
+### Tests
 
 ```bash
-cargo test -p prediction-market                       # program tests (LiteSVM): mint/merge/resolve/redeem/void/invariant
-cd app && ADMIN_API_KEY=... pnpm e2e                  # creates a 70s market, trades both books, mints/merges, resolves, redeems
-pnpm book 1                                           # print both live books of market 1 + bot fair price
+cargo test -p prediction-market                            # program tests (LiteSVM): mint/merge/resolve/redeem/void/invariant
+cd ../web && ADMIN_API_KEY=... npm run pm:e2e              # 70s market: trade both books, mint/merge, resolve, redeem
 ```
 
 ## Devnet demo
@@ -104,8 +111,9 @@ Admin endpoints need the header `x-admin-key`.
 | Method | Path | Auth | |
 |---|---|---|---|
 | GET | `/health`, `/config` | | Health check; public addresses for the frontend |
-| GET | `/markets[?status=active]`, `/markets/:id` | | Markets with both book addresses |
+| GET | `/markets[?status=active]`, `/markets/:id` | | Markets with both book addresses and `query_hash` |
 | GET | `/markets/:id/trades` | | Recent bot orders |
+| POST | `/public/markets` | | `{question, description?, resolution_time, initial_price_cents=50}` → `{created, market}`; seeded with liquidity |
 | POST | `/markets` | admin | `{question, description?, resolution_time, initial_price_cents=50, seed_sets=1000, levels=5, level_size=50}` |
 | POST | `/markets/:id/resolve` | admin | `{outcome: "yes" \| "no" \| "void"}`, only after `resolution_time` |
 | POST | `/faucet` | | `{wallet}`: 1,000 mUSDC (+SOL), limited to 1 per wallet per hour |
@@ -114,6 +122,7 @@ Admin endpoints need the header `x-admin-key`.
 
 ## Notes
 
-- **OpenBook instructions are built by hand** (`backend/src/chain/openbook.rs`, `app/src/solana.ts`): an 8-byte discriminator plus borsh args, with account order taken from the OpenBook IDL. Its legacy IDL doesn't work with Anchor 1.x codegen.
+- **OpenBook instructions are built by hand** (`backend/src/chain/openbook.rs`, `web/src/predictions/solana.ts`): an 8-byte discriminator plus borsh args, with account order taken from the OpenBook IDL. Its legacy IDL doesn't work with Anchor 1.x codegen.
 - **Only the market maker places resting orders.** Users and bots send IOC take orders that settle straight into their token accounts. So the crank only ever passes the admin's open-orders accounts, and users never need an open-orders account.
 - **The market maker quotes YES around the fair price `f` and NO around `100 − f`**, with a ≥1¢ spread on each side. That keeps YES ask + NO ask > 100¢ and YES bid + NO bid < 100¢, so the two books stay arbitrage-free.
+- **Public creation costs the admin about 4 SOL of rent per market.** That's free on the local validator. Before any public deployment, add rate limiting.

@@ -1,0 +1,106 @@
+/* Predictions tab. Every class is pm- prefixed so nothing collides with the Main tab's styles;
+   colours come from the shared palette in style.css (YES = --ok, NO = --bad). */
+.pm {
+  --pm-yes: var(--ok);
+  --pm-yes-soft: var(--ok-soft);
+  --pm-no: var(--bad);
+  --pm-no-soft: #fbe9e7;
+  --pm-radius: 12px;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.pm-main { max-width: 1180px; margin: 0 auto; padding: 20px 16px 60px; }
+.pm h2 { margin: 6px 0; font-size: 24px; }
+.pm h3 { margin: 8px 0; font-size: 17px; }
+.pm h4 { margin: 0 0 10px; font-size: 15px; }
+.pm a { color: inherit; text-decoration: none; }
+
+.pm-header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-left: auto; }
+.pm-header .wallet-adapter-button { height: 34px; font-size: 14px; padding: 0 14px; border-radius: 6px; background: var(--accent); }
+.pm-balances { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 14px; }
+.pm-pill { border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; font-size: 13px; }
+
+.pm-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--pm-radius); padding: 16px; }
+.pm-row { display: flex; align-items: center; }
+.pm-between { justify-content: space-between; }
+.pm-gap { gap: 10px; flex-wrap: wrap; }
+.pm-ok { color: var(--pm-yes); }
+
+.pm-list { display: flex; flex-direction: column; gap: 16px; }
+.pm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.pm-market-card:hover { border-color: var(--accent); }
+
+.pm-status { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 999px; background: var(--line); }
+.pm-status.active { background: var(--pm-yes-soft); color: var(--pm-yes); }
+.pm-status.pending { background: var(--warn-soft); color: var(--warn); }
+.pm-status.failed { background: var(--pm-no-soft); color: var(--pm-no); }
+
+.pm-prob-row { display: flex; align-items: center; gap: 10px; }
+.pm-prob-bar { flex: 1; height: 8px; background: var(--pm-no-soft); border-radius: 99px; overflow: hidden; }
+.pm-prob-fill { height: 100%; background: var(--pm-yes); }
+.pm-prob { font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.pm-btn { border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 8px 14px; border-radius: 8px; font-weight: 600; }
+.pm-btn.pm-ghost { background: transparent; }
+.pm-btn.pm-primary { background: var(--accent); border-color: var(--accent); color: #fff; width: 100%; padding: 12px; }
+.pm-btn.pm-primary.pm-inline { width: auto; padding: 8px 16px; }
+.pm-btn.pm-primary.yes { background: var(--pm-yes); border-color: var(--pm-yes); }
+.pm-btn.pm-primary.no { background: var(--pm-no); border-color: var(--pm-no); }
+.pm-link { border: none; background: none; color: var(--accent); padding: 0; align-self: flex-start; }
+
+/* create market */
+.pm-create { display: flex; flex-direction: column; gap: 12px; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.pm-stack { display: flex; flex-direction: column; gap: 4px; }
+.pm-stack textarea, .pm-stack input:not([type="range"]) {
+  font: inherit; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--bg); width: 100%;
+}
+.pm-stack textarea { resize: vertical; }
+.pm-create-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 640px) { .pm-create-row { grid-template-columns: 1fr; } }
+
+/* market page */
+.pm-market-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin: 8px 0 20px; flex-wrap: wrap; }
+.pm-big-prob { text-align: right; }
+.pm-prob-num { font-size: 40px; font-weight: 800; color: var(--pm-yes); font-variant-numeric: tabular-nums; }
+.pm-big-prob.resolved.no .pm-prob-num { color: var(--pm-no); }
+.pm-big-prob.resolved.void .pm-prob-num { color: var(--muted); }
+
+.pm-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; }
+.pm-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+@media (max-width: 860px) { .pm-layout { grid-template-columns: 1fr; } }
+
+.pm-books { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 560px) { .pm-books { grid-template-columns: 1fr; } }
+.pm-book-head, .pm-book-row { display: grid; grid-template-columns: 1fr 1fr; padding: 3px 6px; position: relative; font-variant-numeric: tabular-nums; }
+.pm-book-row span { position: relative; z-index: 1; }
+.pm-book-row span:last-child, .pm-book-head span:last-child { text-align: right; }
+.pm-depth { position: absolute; right: 0; top: 1px; bottom: 1px; border-radius: 3px; }
+.pm-ask .pm-depth { background: var(--pm-no-soft); }
+.pm-bid .pm-depth { background: var(--pm-yes-soft); }
+.pm-ask span:first-child { color: var(--pm-no); }
+.pm-bid span:first-child { color: var(--pm-yes); }
+.pm-book-mid { border-top: 1px dashed var(--line); margin: 4px 0; }
+
+.pm-chart { width: 100%; height: 140px; display: block; }
+.pm-chart .pm-line { fill: none; stroke: var(--pm-yes); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.pm-chart .pm-area { fill: var(--pm-yes-soft); }
+.pm-chart .pm-grid-line { stroke: var(--line); stroke-dasharray: 4 4; vector-effect: non-scaling-stroke; }
+.pm-chart-empty { height: 140px; display: grid; place-items: center; }
+
+.pm-trade { display: flex; flex-direction: column; gap: 12px; }
+.pm-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.pm-seg button { padding: 10px; border-radius: 8px; font-weight: 700; background: transparent; }
+.pm-seg button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pm-seg button.on.yes { background: var(--pm-yes); border-color: var(--pm-yes); }
+.pm-seg button.on.no { background: var(--pm-no); border-color: var(--pm-no); }
+.pm-small-seg button { padding: 6px; font-weight: 600; }
+.pm-field { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.pm-field input, .pm-field select { width: 140px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); font: inherit; text-align: right; }
+.pm-summary { display: flex; flex-direction: column; gap: 4px; font-size: 14px; font-variant-numeric: tabular-nums; }
+.pm-details summary { cursor: pointer; font-weight: 600; }
+.pm-details[open] summary { margin-bottom: 10px; }
+.pm-details .pm-field { margin: 10px 0; }
+
+.pm-trades { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.pm-trades td { padding: 4px 6px; border-top: 1px solid var(--line); }

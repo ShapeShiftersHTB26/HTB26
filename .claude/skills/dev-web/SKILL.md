@@ -10,7 +10,10 @@ The layout and the visual contract are in [docs/SPEC.md](../../../docs/SPEC.md) 
 ## Structure
 ```
 web/src/api.ts             op(name, args) -> fetch('/api/op/'+name)
-web/src/App.tsx            polling + selected view + layout
+web/src/App.tsx            tab shell (hash routing): Main | Predictions
+web/src/MainApp.tsx        Main tab: polling + selected view + layout (stays mounted, hidden, on other tabs)
+web/src/predictions/       Predictions tab (lazy-loaded): Solana prediction markets, talks to /pm-api (Vite proxy
+                           → prediction-market-backend). Classes are pm- prefixed; see prediction-market/README.md
 web/src/Canvas.tsx         react-flow + dagre (TB): view, data and visual nodes; transform and uses edges
 web/src/ViewPanel.tsx      tabs: Shape | Visual | Transform | Data
 web/src/ProposalCards.tsx  generic sibling cards + approve/discard/comment; takes a renderBody prop

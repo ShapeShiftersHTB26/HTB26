@@ -31,9 +31,70 @@ services:
     ports: ["5173:5173"]
     environment:
       API_URL: http://api:8000
+      PM_API_URL: http://prediction-market-backend:8080   # Predictions tab (/pm-api proxy)
     volumes:
       - ./web/src:/srv/src
     depends_on: [api]
 
+  # ---------------------------------------------------------------------------
+  # Prediction markets (Predictions tab). See prediction-market/README.md.
+  #   RPC      http://localhost:8899 (ws :8900) — local validator, programs loaded at genesis
+  #   API      http://localhost:8080 — admin header x-admin-key: dev-admin-key
+  #   Postgres localhost:5433 (pm / pm)
+  # Chain, database and keys persist in volumes; reset them together:
+  #   docker compose rm -sfv prediction-market-validator prediction-market-backend prediction-market-db
+  #   docker volume rm htb26_prediction-market-ledger htb26_prediction-market-pgdata htb26_prediction-market-keys
+  # ---------------------------------------------------------------------------
+  prediction-market-db:
+    image: postgres:16
+    environment: { POSTGRES_USER: pm, POSTGRES_PASSWORD: pm, POSTGRES_DB: pm }
+    ports: ["5433:5432"]
+    volumes: [prediction-market-pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pm -d pm"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  prediction-market-validator:
+    build: { context: ./prediction-market, dockerfile: docker/validator.Dockerfile }
+    platform: linux/amd64 # Agave ships x86_64 Linux binaries only (Rosetta on Apple Silicon)
+    ports: ["8899:8899", "8900:8900"]
+    volumes: [prediction-market-ledger:/ledger]
+    healthcheck:
+      test: ["CMD-SHELL", "solana cluster-version -u http://$$(hostname -i | awk '{print $$1}'):8899"]
+      interval: 3s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+
+  prediction-market-backend:
+    build: { context: ./prediction-market, dockerfile: docker/backend.Dockerfile }
+    depends_on:
+      prediction-market-db: { condition: service_healthy }
+      prediction-market-validator: { condition: service_healthy }
+    ports: ["8080:8080"]
+    volumes: [prediction-market-keys:/keys]
+    environment:
+      RPC_URL: http://prediction-market-validator:8899
+      PUBLIC_RPC_URL: http://localhost:8899        # what browsers use
+      DATABASE_URL: postgres://pm:pm@prediction-market-db:5432/pm
+      AUTO_CREATE_KEYS: "true"                     # admin + mUSDC mint keypairs generated on first start
+      ADMIN_KEYPAIR: /keys/admin.json
+      MUSDC_MINT_KEYPAIR: /keys/musdc-mint.json
+      BOT_KEYS_DIR: /keys/bots
+      BOOTSTRAP_ON_START: "true"                   # airdrop admin, create mUSDC mint, init program Config
+      DEMO_MARKETS: "true"                         # create 2 demo markets if the db is empty
+      ADMIN_API_KEY: dev-admin-key
+      BOT_COUNT: "5"
+      BOT_INTERVAL_MS: "3000"
+      BOTS_AUTOSTART: "true"
+      FAUCET_SOL_LAMPORTS: "50000000"
+      RUST_LOG: pm_backend=info,tower_http=warn
+    restart: on-failure
+
 volumes:
   mg_data:
+  prediction-market-pgdata:
+  prediction-market-ledger:
+  prediction-market-keys:

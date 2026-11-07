@@ -407,7 +407,9 @@ This works because in the MVP **only the market maker places resting orders**. E
 
 ---
 
-## 9. Frontend (`app/`)
+## 9. Frontend (Predictions tab: `web/src/predictions/` in the Backtrace web app)
+
+Anyone can create a market from the UI (**Create market** → `POST /public/markets`). The backend seeds both books, and the same question returns the existing market (`query_hash`).
 
 React (Vite or Next.js), `@solana/wallet-adapter`, `@coral-xyz/anchor` with the program IDL, and `@openbook-dex/openbook-v2` to read both books.
 
@@ -434,7 +436,6 @@ prediction-market/
 ├── programs/prediction_market/
 ├── tests/                      # anchor tests: mint/merge/resolve/redeem/void + vault invariant
 ├── backend/                    # separate Cargo project
-├── app/
 ├── scripts/setup.sh
 ├── docker-compose.yml          # postgres only
 └── keys/                       # gitignored

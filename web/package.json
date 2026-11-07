@@ -5,19 +5,36 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc -b && vite build"
+    "build": "tsc -b && vite build",
+    "pm:e2e": "tsx scripts/predictions-e2e.ts",
+    "pm:book": "tsx scripts/predictions-book.ts"
   },
   "dependencies": {
+    "@coral-xyz/anchor": "0.29.0",
     "@dagrejs/dagre": "1.1.4",
+    "@openbook-dex/openbook-v2": "0.2.10",
+    "@solana/spl-token": "0.4.15",
+    "@solana/wallet-adapter-base": "0.9.28",
+    "@solana/wallet-adapter-react": "0.15.40",
+    "@solana/wallet-adapter-react-ui": "0.9.40",
+    "@solana/web3.js": "1.99.0",
     "@xyflow/react": "12.3.6",
+    "bn.js": "5.2.5",
     "react": "18.3.1",
     "react-dom": "18.3.1"
   },
   "devDependencies": {
+    "@types/bn.js": "5.2.0",
     "@types/react": "18.3.12",
     "@types/react-dom": "18.3.1",
     "@vitejs/plugin-react": "4.3.4",
+    "tsx": "4.23.15",
     "typescript": "5.6.3",
-    "vite": "5.4.11"
+    "vite": "5.4.11",
+    "vite-plugin-node-polyfills": "0.22.0"
+  },
+  "overrides": {
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1"
   }
 }
