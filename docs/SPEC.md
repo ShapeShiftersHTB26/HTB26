@@ -81,6 +81,18 @@ Navigation:
 
 Indexes: `:Record(rid)`, plus `:View(id)`, `:SchemaVersion(id)`, `:Transform(id)`, `:Visual(id)` and `:Instance(id)`.
 
+## Intents (the request layer)
+- **`Intent`** `{id, text, anchors (json view ids), mode (auto|guided), status (open|answered), parent_id?, result_id?, result_kind (view|visual), summary?, author, created_at}`.
+- **Edges:** `(Intent)-[:ANCHORED_ON]->(View)` and `(Intent)-[:FOLLOWS]->(Intent)`.
+- **Membership:** every proposal made while serving an intent carries `intent_id`, and so does every view created under it. Membership is derived from that, never maintained separately.
+- **Inputs** of an intent are its anchors plus the views its transforms read that aren't members.
+- **Ops:** `start_intent`, `get_intent` (the ordered story of steps), `resolve_intent`. `get_graph.intents` gives summaries (members, inputs, steps, `result_current`).
+- **`result_current`** follows the result visual's revision tree, so approving a revision updates the outcome automatically.
+- **Mode:** `auto` means the agent approves its own steps and the user inspects the path afterwards. `guided` is step-by-step approval. The default is auto when anchored, guided for a fresh question.
+- **Canvas lenses:**
+  - **Outcomes** (default): each intent collapses into inputs → intent → result; click an intent to expand its path.
+  - **Detail:** the full graph.
+
 ## Shape format
 `schema` is JSON Schema for **one row**, plus annotations. It travels together with `grain`, `scope` and `preview`:
 ```json

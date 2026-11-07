@@ -24,9 +24,30 @@ export type View = {
   pending: Counts;
   latest_instance?: { id: string; row_count: number; created_at?: string; model?: string } | null;
   instance_count?: number;
-  visuals?: { id: string; status: string; uses: string[]; title?: string }[];
+  visuals?: { id: string; status: string; uses: string[]; title?: string; intent_id?: string }[];
 };
-export type Graph = { views: View[]; edges: { from: string; to: string; pending?: boolean; kind?: string }[] };
+export type Graph = {
+  views: View[];
+  edges: { from: string; to: string; pending?: boolean; kind?: string }[];
+  intents?: Intent[];
+};
+export type Intent = {
+  id: string;
+  text: string;
+  mode: "auto" | "guided";
+  status: "open" | "answered";
+  anchors: string[];
+  parent_id?: string;
+  members: string[];
+  inputs: string[];
+  visuals: string[];
+  steps: number;
+  result_id?: string;
+  result_kind?: "view" | "visual";
+  result_current?: string;
+  result_view_id?: string;
+  summary?: string;
+};
 
 export type Proposal = {
   id: string;

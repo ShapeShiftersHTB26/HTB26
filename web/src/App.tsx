@@ -1,20 +1,38 @@
 import { useEffect, useState } from "react";
 import { op, Graph } from "./api";
-import Canvas, { CanvasTarget } from "./Canvas";
+import Canvas, { CanvasTarget, Lens } from "./Canvas";
+import IntentPanel from "./IntentPanel";
 import TraceDrawer from "./TraceDrawer";
 import ViewPanel, { Tab } from "./ViewPanel";
 
 export default function App() {
-  const [graph, setGraph] = useState<Graph>({ views: [], edges: [] });
+  const [graph, setGraph] = useState<Graph>({ views: [], edges: [], intents: [] });
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [intent, setIntent] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const [traceRid, setTraceRid] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("schema");
-  const select = (t: CanvasTarget) => {
-    setSelected(t.viewId);
-    if (t.tab) setTab(t.tab);
+  const [lens, setLens] = useState<Lens>("outcome");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const open = (t: CanvasTarget) => {
+    if (t.type === "intent") {
+      setIntent(t.intentId);
+      setSelected(null);
+    } else {
+      setSelected(t.viewId);
+      setIntent(null);
+      if (t.tab) setTab(t.tab);
+    }
   };
+  const toggleExpand = (id: string) =>
+    setExpanded((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
 
   useEffect(() => {
     let alive = true;
@@ -35,9 +53,7 @@ export default function App() {
     };
   }, []);
 
-  // auto-select the newest view when nothing is selected
   useEffect(() => {
-    if (!selected && graph.views.length) setSelected(graph.views[graph.views.length - 1].id);
     if (selected && !graph.views.find((v) => v.id === selected)) setSelected(null);
   }, [graph, selected]);
 
@@ -45,21 +61,35 @@ export default function App() {
     <div className="app">
       <header>
         <strong>Backtrace</strong>
-        <span className="muted">{graph.views.length} views</span>
+        <span className="muted">
+          {graph.views.length} views · {(graph.intents || []).length} intents
+        </span>
+        <div className="lens">
+          {(["outcome", "detail"] as Lens[]).map((l) => (
+            <button key={l} className={lens === l ? "active" : ""} onClick={() => setLens(l)}>
+              {l === "outcome" ? "Outcomes" : "Detail"}
+            </button>
+          ))}
+        </div>
         {error && <span className="error">api: {error}</span>}
       </header>
       <main>
-        <Canvas graph={graph} selected={selected} onSelect={select} />
+        <Canvas graph={graph} selected={selected} lens={lens} expanded={expanded} onSelect={open} />
         {graph.views.length === 0 && (
           <div className="empty">No views yet — ask a question in Claude Code (run from agent/).</div>
         )}
         {selected && (
-          <ViewPanel viewId={selected} tick={tick} graph={graph} onClose={() => setSelected(null)} onSelectRecord={setTraceRid}
-                     tab={tab} onTab={setTab} />
+          <ViewPanel viewId={selected} tick={tick} graph={graph} onClose={() => setSelected(null)}
+                     onSelectRecord={setTraceRid} tab={tab} onTab={setTab} />
+        )}
+        {intent && (
+          <IntentPanel intentId={intent} tick={tick} expanded={expanded.has(intent)}
+                       onToggleExpand={() => toggleExpand(intent)} onOpen={open} onClose={() => setIntent(null)} />
         )}
         {traceRid && (
           <TraceDrawer rid={traceRid} names={new Map(graph.views.map((v) => [v.id, v.name]))}
-                       onClose={() => setTraceRid(null)} onSelect={setTraceRid} onOpenView={setSelected} />
+                       onClose={() => setTraceRid(null)} onSelect={setTraceRid}
+                       onOpenView={(id) => open({ type: "view", viewId: id, tab: null })} />
         )}
       </main>
     </div>

@@ -132,3 +132,22 @@ table.cols td { padding: 2px 8px 2px 0; vertical-align: top; }
 .gnode.visual.pending { border-style: dashed !important; background: #fffdf7; }
 .react-flow__edge.edge-attach path { stroke: #c9c9cf; stroke-width: 1.5; }
 .react-flow__edge-text { font-size: 12px; fill: var(--muted); }
+
+/* intents + lenses */
+.lens { display: flex; gap: 0; margin-left: 12px; }
+.lens button { border-radius: 0; padding: 4px 14px; }
+.lens button:first-child { border-radius: 6px 0 0 6px; }
+.lens button:last-child { border-radius: 0 6px 6px 0; border-left: none; }
+.lens button.active { background: var(--accent); color: white; border-color: var(--accent); }
+.gnode.intent { background: linear-gradient(180deg, #f4f1ff, #fff); border: 2px solid var(--accent) !important; border-radius: 14px; font-size: 13px; }
+.gnode.intent.open { border-style: dashed !important; }
+.gnode.intent.expanded { opacity: 0.85; }
+.qtext { font-style: italic; font-weight: 600; color: #2b1f7a; }
+.qtitle { font-style: italic; }
+.answer { margin: 6px 0; padding: 8px 10px; background: var(--ok-soft); border-radius: 8px; color: #135c33; }
+.intent-actions { display: flex; gap: 8px; margin-bottom: 12px; }
+.story { padding-left: 22px; }
+.story li { margin: 0 0 12px; }
+.story li a { cursor: pointer; }
+.story li.pending b { color: var(--warn); }
+.react-flow__edge.edge-group path { stroke-width: 1.5; }

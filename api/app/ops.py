@@ -1,5 +1,7 @@
 """All Backtrace operations. Each function is exposed as an MCP tool (docstring = description)
 and as POST /api/op/<name> (JSON body = kwargs)."""
+import json
+
 import jsonschema
 
 from . import executor as X
@@ -27,7 +29,7 @@ def _all_views() -> list[dict]:
         f"MATCH (v:View) OPTIONAL MATCH (p)-[:{P.VIEW_EDGES}]->(v) "
         "RETURN v, collect(CASE WHEN p IS NULL THEN NULL ELSE "
         "{label: labels(p)[0], id: p.id, status: p.status, counter: p.counter, reads: p.reads, kind: p.kind, "
-        "parent_id: p.parent_id, uses: p.uses} END) AS ps "
+        "parent_id: p.parent_id, uses: p.uses, intent_id: p.intent_id} END) AS ps "
         "ORDER BY v.created_at")
     out = []
     for r in rows:
@@ -76,7 +78,8 @@ def get_graph() -> dict:
     for v in views:
         props = v.pop("_proposals")
         current = P.heads_by_tree(props["visual"])
-        visuals = [{"id": x["id"], "status": x["status"], "uses": x.get("uses") or [], "title": titles.get(x["id"])}
+        visuals = [{"id": x["id"], "status": x["status"], "uses": x.get("uses") or [], "title": titles.get(x["id"]),
+                    "intent_id": x.get("intent_id")}
                    for x in current + [x for x in props["visual"] if x["status"] == "pending"]]
         out.append({**v,
                     "head": {k: (h["id"] if (h := P.head(ps)) else None) for k, ps in props.items()},
@@ -84,7 +87,125 @@ def get_graph() -> dict:
                     "latest_instance": latest.get(v["id"]), "instance_count": counts.get(v["id"], 0),
                     "visuals": visuals})
         v["_proposals"] = props
-    return {"views": out, "edges": _edges(views)}
+    return {"views": out, "edges": _edges(views), "intents": _intent_summaries(views)}
+
+
+# ---------------------------------------------------------------- Intents
+
+def _check_intent(intent_id: str | None) -> None:
+    if intent_id and not g.run("MATCH (q:Intent {id:$id}) RETURN q.id AS id", id=intent_id):
+        raise ValueError(f"no intent with id '{intent_id}' (call start_intent first)")
+
+
+def _intent_summaries(views: list[dict]) -> list[dict]:
+    """Per intent: member views/visuals (created while serving it), external inputs, result, step count."""
+    out = []
+    for r in g.run("MATCH (q:Intent) RETURN q ORDER BY q.created_at"):
+        q = dict(r["q"])
+        q["anchors"] = json.loads(q.get("anchors") or "[]")
+        qid = q["id"]
+        members = [v["id"] for v in views if v.get("intent_id") == qid]
+        steps, visuals, reads = 0, [], set()
+        for v in views:
+            for kind, ps in v["_proposals"].items():
+                for p in ps:
+                    if p.get("intent_id") != qid:
+                        continue
+                    steps += 1
+                    if kind == "visual" and p["status"] != "discarded":
+                        visuals.append(p["id"])
+                    if kind == "transform" and p["status"] != "discarded":
+                        reads |= set(p.get("reads") or [])
+        inputs = sorted((reads | set(q["anchors"])) - set(members))
+        current = q.get("result_id")
+        if q.get("result_kind") == "visual":  # follow the result visual's revision tree to its current version
+            for v in views:
+                vis = v["_proposals"]["visual"]
+                if any(x["id"] == current for x in vis):
+                    by_id = {x["id"]: x for x in vis}
+
+                    def root(x):
+                        while x.get("parent_id") in by_id:
+                            x = by_id[x["parent_id"]]
+                        return x["id"]
+                    r0 = root(by_id[current])
+                    tree = [x for x in vis if root(x) == r0]
+                    h = P.head(tree)
+                    current = h["id"] if h else current
+                    q["result_view_id"] = v["id"]
+        elif current:
+            q["result_view_id"] = current
+        out.append({**q, "members": members, "visuals": visuals, "inputs": inputs, "steps": steps,
+                    "result_current": current})
+    return out
+
+
+@operation
+def start_intent(text: str, anchors: list[str] | None = None, mode: str | None = None,
+                 parent_id: str | None = None, author: str = "user") -> dict:
+    """Record a natural-language request as an Intent. Call this FIRST for every new user request, then pass
+    the returned intent_id to every propose_* call made while serving it.
+    - text: the user's request verbatim
+    - anchors: view ids the request starts from (e.g. the dataset the user is looking at); empty for a fresh question
+    - mode: "auto" (approve your own steps; the user sees the outcome and can inspect the path) or "guided"
+      (stop for the user's approval at each step). Default: auto when anchored (exploration), guided otherwise.
+    - parent_id: the previous intent when this is a follow-up or refinement ("now only flats")."""
+    anchors = anchors or []
+    for a in anchors:
+        P.view_node(a)
+    _check_intent(parent_id)
+    mode = mode or ("auto" if anchors else "guided")
+    if mode not in ("auto", "guided"):
+        raise ValueError("mode must be auto | guided")
+    qid = g.new_id("q")
+    g.run("CREATE (q:Intent) SET q = $props", props={k: v for k, v in {
+        "id": qid, "text": text, "anchors": json.dumps(anchors), "mode": mode, "status": "open",
+        "parent_id": parent_id, "author": author, "created_at": g.now()}.items() if v is not None})
+    for a in anchors:
+        g.run("MATCH (q:Intent {id:$q}), (v:View {id:$v}) CREATE (q)-[:ANCHORED_ON]->(v)", q=qid, v=a)
+    if parent_id:
+        g.run("MATCH (q:Intent {id:$q}), (p:Intent {id:$p}) CREATE (q)-[:FOLLOWS]->(p)", q=qid, p=parent_id)
+    return {"id": qid, "mode": mode, "status": "open"}
+
+
+@operation
+def resolve_intent(intent_id: str, result_id: str, summary: str) -> dict:
+    """Mark an Intent answered once its result exists: result_id = the visual (preferred) or view that answers
+    it; summary = one or two sentences answering the request in plain language (shown on the canvas)."""
+    _check_intent(intent_id)
+    if result_id.startswith("v_"):
+        P.view_node(result_id)
+        label = "View"
+    else:
+        label, _ = P.find(result_id)
+    if label not in ("View", "Visual"):
+        raise ValueError("result_id must be a view or a visual")
+    g.run("MATCH (q:Intent {id:$q}) SET q.status = 'answered', q.result_id = $r, q.result_kind = $k, "
+          "q.summary = $s, q.answered_at = $t", q=intent_id, r=result_id, k=label.lower(), s=summary, t=g.now())
+    return {"id": intent_id, "status": "answered", "result_id": result_id}
+
+
+@operation
+def get_intent(intent_id: str) -> dict:
+    """An Intent with its path under the hood: every step taken to serve it, in order (kind, view, status,
+    who decided, rationale), its member views, inputs, result and follow-up intents."""
+    views = _all_views()
+    q = next((x for x in _intent_summaries(views) if x["id"] == intent_id), None)
+    if q is None:
+        raise ValueError(f"no intent with id '{intent_id}'")
+    names = {v["id"]: v["name"] for v in views}
+    rows = g.run("MATCH (p) WHERE (p:SchemaVersion OR p:Transform OR p:Visual) AND p.intent_id = $q "
+                 "RETURN labels(p)[0] AS label, p ORDER BY p.created_at", q=intent_id)
+    steps = []
+    for r in rows:
+        p = P.decode(r["p"])
+        steps.append({"id": p["id"], "kind": P.LABEL_TO_KIND[r["label"]], "view_id": p["view_id"],
+                      "view_name": names.get(p["view_id"]), "status": p["status"],
+                      "decided_by": p.get("decided_by"), "rationale": p.get("rationale"),
+                      "created_at": p["created_at"], "transform_kind": p.get("kind"),
+                      "reads": [names.get(x, x) for x in p.get("reads") or []]})
+    children = [r["c"] for r in g.run("MATCH (c:Intent {parent_id:$q}) RETURN c", q=intent_id)]
+    return {"intent": q, "steps": steps, "children": children, "names": names}
 
 
 # ---------------------------------------------------------------- S1
@@ -110,7 +231,7 @@ def _schema_warnings(schema: dict, preview: list[dict]) -> list[str]:
 @operation
 def propose_schema(schema: dict, grain: str, scope: list[str], preview: list[dict], rationale: str,
                    view_id: str | None = None, name: str | None = None, question: str | None = None,
-                   parent_id: str | None = None, author: str = "agent") -> dict:
+                   parent_id: str | None = None, author: str = "agent", intent_id: str | None = None) -> dict:
     """Propose the shape of a view. Omit view_id to create a NEW view (then `name` is required and
     `question` should hold the user's question verbatim). To revise an existing shape, pass view_id and
     parent_id = the version being revised (proposals are immutable; revisions are siblings).
@@ -120,16 +241,18 @@ def propose_schema(schema: dict, grain: str, scope: list[str], preview: list[dic
     - scope: constraints/interpretations, e.g. ["Reading district", "flats only"]
     - preview: 3-6 plausible example rows (rendered in the UI before any data exists)
     - rationale: 1-2 sentences on why this shape answers the question
-    Returns the new proposal id, its view_id and any warnings (fix warnings with a sibling)."""
+    Returns the new proposal id, its view_id and any warnings (fix warnings with a sibling).
+    intent_id: the Intent this step serves (from start_intent) - always pass it."""
+    _check_intent(intent_id)
     if view_id is None:
         if not name:
             raise ValueError("name is required when creating a new view")
         view_id = g.new_id("v")
         g.run("CREATE (v:View) SET v = $props",
-              props={"id": view_id, "name": name, "kind": "derived", "question": question or "",
-                     "auto_accept": False, "created_at": g.now()})
+              props={k: v for k, v in {"id": view_id, "name": name, "kind": "derived", "question": question or "",
+                     "auto_accept": False, "created_at": g.now(), "intent_id": intent_id}.items() if v is not None})
     p = P.create("schema", view_id, {"schema": schema, "grain": grain, "scope": scope, "preview": preview,
-                                     "rationale": rationale}, parent_id, author)
+                                     "rationale": rationale, "intent_id": intent_id}, parent_id, author)
     return {"id": p["id"], "view_id": view_id, "status": "pending", "warnings": _schema_warnings(schema, preview)}
 
 
@@ -191,7 +314,7 @@ def get_view(view_id: str) -> dict:
 
 @operation
 def propose_visual(view_id: str, html: str, rationale: str, uses: list[str] | None = None,
-                   parent_id: str | None = None, author: str = "agent") -> dict:
+                   parent_id: str | None = None, author: str = "agent", intent_id: str | None = None) -> dict:
     """Propose a visual for a view: a complete self-contained HTML document. At runtime the page gets
     window.BACKTRACE = {schema, rows, mode: "preview"|"instance", view: {id, name},
                         views: {<view name>: {view_id, schema, rows, mode}}}
@@ -200,13 +323,16 @@ def propose_visual(view_id: str, html: str, rationale: str, uses: list[str] | No
     to revise that visual. `uses` = ids of OTHER views the visual also needs (e.g. a reference view of district locations or
     boundaries); their rows appear under window.BACKTRACE.views keyed by view name, and the HTML joins them
     (e.g. on postcode_district). Read data ONLY from window.BACKTRACE (never hardcode values).
-    Revise with parent_id."""
+    Revise with parent_id.
+    intent_id: the Intent this step serves (from start_intent) - always pass it."""
+    _check_intent(intent_id)
     if "<" not in html:
         raise ValueError("html must be an HTML document")
     uses = [u for u in (uses or []) if u != view_id]
     for u in uses:
         P.view_node(u)
-    p = P.create("visual", view_id, {"html": html, "rationale": rationale, "uses": uses}, parent_id, author)
+    p = P.create("visual", view_id, {"html": html, "rationale": rationale, "uses": uses, "intent_id": intent_id},
+                 parent_id, author)
     return {"id": p["id"], "view_id": view_id, "uses": uses, "status": "pending"}
 
 
@@ -261,7 +387,7 @@ def _head_schema(view_id: str, allow_pending: bool = False) -> dict | None:
 @operation
 def propose_transform(view_id: str, kind: str, spec: dict, rationale: str, reads: list[str] | None = None,
                       new_inputs: list[dict] | None = None, parent_id: str | None = None,
-                      author: str = "agent") -> dict:
+                      author: str = "agent", intent_id: str | None = None) -> dict:
     """Propose how a view is computed (one step upstream). The transform reads existing views (`reads`,
     view ids) and/or NEW intermediate views defined in `new_inputs` [{name, schema, grain, scope, preview}]
     — those are created now and approved together with this transform.
@@ -274,7 +400,9 @@ def propose_transform(view_id: str, kind: str, spec: dict, rationale: str, reads
     - kind "agent_map": spec {prompt, batch_size} — LLM adds fields per row
     - kind "agent_reduce": spec {prompt, max_rows} — LLM judges the whole table, cites source rows
     To revise, pass parent_id = the transform being revised. Returns id, new input view ids and
-    warnings from a static column check (fix warnings with a sibling before asking the user)."""
+    warnings from a static column check (fix warnings with a sibling before asking the user).
+    intent_id: the Intent this step serves (from start_intent) - always pass it."""
+    _check_intent(intent_id)
     if kind not in ("ops", "agent_map", "agent_reduce"):
         raise ValueError("kind must be ops | agent_map | agent_reduce")
     target = _head_schema(view_id, allow_pending=True)
@@ -287,12 +415,13 @@ def propose_transform(view_id: str, kind: str, spec: dict, rationale: str, reads
     created = []
     for ni in new_inputs or []:
         vid = g.new_id("v")
-        g.run("CREATE (v:View) SET v = $props", props={"id": vid, "name": ni["name"], "kind": "derived",
-              "question": "", "auto_accept": False, "created_at": g.now()})
+        g.run("CREATE (v:View) SET v = $props", props={k: v for k, v in {"id": vid, "name": ni["name"],
+              "kind": "derived", "question": "", "auto_accept": False, "created_at": g.now(),
+              "intent_id": intent_id}.items() if v is not None})
         P.create("schema", vid, {"schema": ni["schema"], "grain": ni.get("grain", ""),
                                  "scope": ni.get("scope", []), "preview": ni.get("preview", []),
                                  "rationale": ni.get("rationale", f"Input for {view_id}"),
-                                 "proposed_with": tid}, None, author)
+                                 "proposed_with": tid, "intent_id": intent_id}, None, author)
         created.append({"view_id": vid, "name": ni["name"]})
         reads.append(vid)
     warnings = []
@@ -304,7 +433,7 @@ def propose_transform(view_id: str, kind: str, spec: dict, rationale: str, reads
             in_cols = list((src or {}).get("schema", {}).get("properties", {}))
             warnings += OPS.check(spec, in_cols, list(target["schema"].get("properties", {})))
     p = P.create("transform", view_id, {"kind": kind, "spec": spec, "reads": reads, "rationale": rationale,
-                                        "warnings": warnings}, parent_id, author, pid=tid)
+                                        "warnings": warnings, "intent_id": intent_id}, parent_id, author, pid=tid)
     return {"id": p["id"], "view_id": view_id, "reads": reads, "new_inputs": created,
             "status": "pending", "warnings": warnings}
 
