@@ -2,9 +2,12 @@
 and as POST /api/op/<name> (JSON body = kwargs)."""
 import jsonschema
 
+from . import executor as X
 from . import graph as g
 from . import proposals as P
 from .registry import operation
+from .transforms import ops as OPS
+from .transforms import source as SRC
 
 
 # ---------------------------------------------------------------- S0
@@ -54,12 +57,16 @@ def get_graph() -> dict:
     visual, counts of pending proposals, and the edges between views (input -> output).
     Call this first to see what exists before acting."""
     views = _all_views()
+    latest = {}
+    for r in g.run("MATCH (i:Instance) RETURN i ORDER BY i.created_at"):
+        latest[r["i"]["view_id"]] = {"id": r["i"]["id"], "row_count": r["i"]["row_count"]}
     out = []
     for v in views:
         props = v.pop("_proposals")
         out.append({**v,
                     "head": {k: (h["id"] if (h := P.head(ps)) else None) for k, ps in props.items()},
-                    "pending": {k: sum(p["status"] == "pending" for p in ps) for k, ps in props.items()}})
+                    "pending": {k: sum(p["status"] == "pending" for p in ps) for k, ps in props.items()},
+                    "latest_instance": latest.get(v["id"])})
         v["_proposals"] = props
     return {"views": out, "edges": _edges(views)}
 
@@ -150,6 +157,7 @@ def get_view(view_id: str) -> dict:
         comments.setdefault(r["c"]["target_id"], []).append(r["c"])
     edges = _edges(views)
     view = {k: val for k, val in v.items() if k != "_proposals"}
+    insts = X.instances(view_id)
     return {
         "view": view,
         "proposals": props,
@@ -157,4 +165,171 @@ def get_view(view_id: str) -> dict:
         "comments": comments,
         "upstream": [e["from"] for e in edges if e["to"] == view_id and not e["pending"]],
         "downstream": [e["to"] for e in edges if e["from"] == view_id and not e["pending"]],
+        "instances": insts,
+        "latest_instance": insts[0] if insts else None,
     }
+
+
+# ---------------------------------------------------------------- S2
+
+@operation
+def propose_visual(view_id: str, html: str, rationale: str, parent_id: str | None = None,
+                   author: str = "agent") -> dict:
+    """Propose a visual for a view: a complete self-contained HTML document. At runtime the page gets
+    window.BACKTRACE = {schema, rows, mode: "preview"|"instance", view: {id, name}} and a function
+    window.backtraceSelect(rid) to call on click (rows from real data carry `_rid`; preview rows don't).
+    Read data ONLY from window.BACKTRACE.rows (never hardcode values). Revise with parent_id."""
+    if "<" not in html:
+        raise ValueError("html must be an HTML document")
+    p = P.create("visual", view_id, {"html": html, "rationale": rationale}, parent_id, author)
+    return {"id": p["id"], "view_id": view_id, "status": "pending"}
+
+
+def _resolve_path(path: str) -> str:
+    import os
+    full = path if path.startswith("/data/") else os.path.join("/data/raw", path)
+    if not os.path.isfile(full):
+        raise ValueError(f"file not found: {full} (put datasets in data/raw/)")
+    return full
+
+
+@operation
+def ingest(path: str, name: str, columns: list[str] | None = None, filter: str | None = None,
+           parse_dates: list[str] | None = None, limit: int | None = None) -> dict:
+    """Load a CSV from data/raw/ as a new SOURCE view (with records). `path` is relative to data/raw/.
+    - columns: column names, required when the CSV has no header row
+    - filter: optional pandas expression over column names to keep a slice, e.g. "district == 'READING'"
+    - parse_dates: columns to parse as dates; limit: max rows
+    The shape is inferred (crude roles) and auto-approved; refine it afterwards with propose_schema
+    (parent_id = the returned schema_id). Returns view_id, row_count, schema and sample rows."""
+    spec = {"path": _resolve_path(path), "columns": columns, "filter": filter,
+            "parse_dates": parse_dates, "limit": limit}
+    spec = {k: v for k, v in spec.items() if v is not None}
+    df = SRC.run(spec)
+    schema = SRC.infer_schema(df)
+    view_id = g.new_id("v")
+    g.run("CREATE (v:View) SET v = $props", props={"id": view_id, "name": name, "kind": "source",
+          "question": "", "auto_accept": False, "created_at": g.now()})
+    preview = X.to_rows(df.head(5))
+    s = P.create("schema", view_id, {"schema": schema, "grain": "one row per source record",
+                                     "scope": [f"filter: {filter}"] if filter else ["all rows"],
+                                     "preview": preview, "rationale": f"Inferred from {path}."}, None, "agent")
+    t = P.create("transform", view_id, {"kind": "source", "spec": spec, "reads": [],
+                                        "rationale": f"Ingest {path}."}, None, "agent")
+    P.decide(s["id"], "approve", "auto")
+    P.decide(t["id"], "approve", "auto")
+    inst = X.write_instance(view_id, df, s["id"], t["id"], [])
+    return {"view_id": view_id, "schema_id": s["id"], "transform_id": t["id"], **inst,
+            "schema": schema, "sample": preview}
+
+
+def _head_schema(view_id: str, allow_pending: bool = False) -> dict | None:
+    rows = g.run("MATCH (s:SchemaVersion {view_id:$v}) RETURN s", v=view_id)
+    ps = [P.decode(r["s"]) for r in rows]
+    h = P.head(ps)
+    if h is None and allow_pending:
+        pend = sorted([p for p in ps if p["status"] == "pending"], key=lambda p: p["created_at"])
+        h = pend[-1] if pend else None
+    return h
+
+
+@operation
+def propose_transform(view_id: str, kind: str, spec: dict, rationale: str, reads: list[str] | None = None,
+                      new_inputs: list[dict] | None = None, parent_id: str | None = None,
+                      author: str = "agent") -> dict:
+    """Propose how a view is computed (one step upstream). The transform reads existing views (`reads`,
+    view ids) and/or NEW intermediate views defined in `new_inputs` [{name, schema, grain, scope, preview}]
+    — those are created now and approved together with this transform.
+    - kind "ops": spec {"ops": [...]} over exactly ONE input. Ops:
+        {"op":"filter","where":"<pandas expr>"}, {"op":"derive","column":c,"expr":"<pandas expr>"},
+        {"op":"aggregate","by":[cols],"metrics":{out:[col, mean|median|sum|count|min|max]}},
+        {"op":"sort","by":[cols],"desc":bool}, {"op":"limit","n":int}
+      Expressions are Python with columns as pandas Series plus pd/np, e.g. "pd.to_datetime(date).dt.year",
+      "(property_type == 'F') & (district == 'READING')".
+    - kind "agent_map": spec {prompt, batch_size} — LLM adds fields per row
+    - kind "agent_reduce": spec {prompt, max_rows} — LLM judges the whole table, cites source rows
+    To revise, pass parent_id = the transform being revised. Returns id, new input view ids and
+    warnings from a static column check (fix warnings with a sibling before asking the user)."""
+    if kind not in ("ops", "agent_map", "agent_reduce"):
+        raise ValueError("kind must be ops | agent_map | agent_reduce")
+    target = _head_schema(view_id, allow_pending=True)
+    if target is None:
+        raise ValueError(f"view '{view_id}' has no shape yet; propose_schema first")
+    tid = g.new_id("t")
+    reads = list(reads or [])
+    for r in reads:
+        P.view_node(r)
+    created = []
+    for ni in new_inputs or []:
+        vid = g.new_id("v")
+        g.run("CREATE (v:View) SET v = $props", props={"id": vid, "name": ni["name"], "kind": "derived",
+              "question": "", "auto_accept": False, "created_at": g.now()})
+        P.create("schema", vid, {"schema": ni["schema"], "grain": ni.get("grain", ""),
+                                 "scope": ni.get("scope", []), "preview": ni.get("preview", []),
+                                 "rationale": ni.get("rationale", f"Input for {view_id}"),
+                                 "proposed_with": tid}, None, author)
+        created.append({"view_id": vid, "name": ni["name"]})
+        reads.append(vid)
+    warnings = []
+    if kind == "ops":
+        if len(reads) != 1:
+            warnings.append(f"ops transforms read exactly one view (got {len(reads)})")
+        else:
+            src = _head_schema(reads[0], allow_pending=True)
+            in_cols = list((src or {}).get("schema", {}).get("properties", {}))
+            warnings += OPS.check(spec, in_cols, list(target["schema"].get("properties", {})))
+    p = P.create("transform", view_id, {"kind": kind, "spec": spec, "reads": reads, "rationale": rationale,
+                                        "warnings": warnings}, parent_id, author, pid=tid)
+    return {"id": p["id"], "view_id": view_id, "reads": reads, "new_inputs": created,
+            "status": "pending", "warnings": warnings}
+
+
+@operation
+def get_frontier(view_id: str) -> dict:
+    """Views still unresolved upstream of (and including) this view: derived views with no approved
+    transform. Empty frontier = the whole chain reaches existing data and can be evaluated."""
+    views = {v["id"]: v for v in _all_views()}
+    frontier, seen, todo = [], set(), [view_id]
+    while todo:
+        vid = todo.pop()
+        if vid in seen or vid not in views:
+            continue
+        seen.add(vid)
+        v = views[vid]
+        h = P.head(v["_proposals"]["transform"])
+        if h is None:
+            if v["kind"] != "source":
+                pending = [t["id"] for t in v["_proposals"]["transform"] if t["status"] == "pending"]
+                frontier.append({"view_id": vid, "name": v["name"], "has_shape": bool(P.head(v["_proposals"]["schema"])),
+                                 "pending_transforms": pending})
+            continue
+        todo.extend(h.get("reads") or [])
+    return {"view_id": view_id, "frontier": frontier}
+
+
+@operation
+def get_records(view_id: str | None = None, instance_id: str | None = None, where: dict | None = None,
+                limit: int = 50, offset: int = 0) -> dict:
+    """Read data rows of a view (its latest instance by default, or a given instance_id).
+    `where` is an equality filter, e.g. {"district": "READING"}. Each row has `_rid` (use it for trace)."""
+    import re
+    if instance_id is None:
+        if view_id is None:
+            raise ValueError("pass view_id or instance_id")
+        inst = X.latest_instance(view_id)
+        if inst is None:
+            return {"instance": None, "total": 0, "rows": [], "note": "view has no data yet (not evaluated)"}
+        instance_id = inst["id"]
+    else:
+        inst = g.run("MATCH (i:Instance {id:$i}) RETURN i", i=instance_id)[0]["i"]
+    conds, params = [], {"iid": instance_id, "limit": min(int(limit), 2000), "offset": int(offset)}
+    for n, (k, v) in enumerate((where or {}).items()):
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", k):
+            raise ValueError(f"bad column name in where: {k!r}")
+        conds.append(f"r.`{k}` = $w{n}")
+        params[f"w{n}"] = v
+    wh = ("WHERE " + " AND ".join(conds)) if conds else ""
+    base = f"MATCH (r:Record)-[:IN]->(:Instance {{id:$iid}}) {wh}"
+    total = g.run(base + " RETURN count(r) AS n", **params)[0]["n"]
+    rows = g.run(base + " RETURN r ORDER BY r.`_n` SKIP $offset LIMIT $limit", **params)
+    return {"instance": inst, "total": total, "rows": [X.record_out(r["r"]) for r in rows]}

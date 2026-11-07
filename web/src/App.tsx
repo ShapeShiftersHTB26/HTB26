@@ -8,6 +8,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const [traceRid, setTraceRid] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -46,7 +47,14 @@ export default function App() {
         {graph.views.length === 0 && (
           <div className="empty">No views yet — ask a question in Claude Code (run from agent/).</div>
         )}
-        {selected && <ViewPanel viewId={selected} tick={tick} onClose={() => setSelected(null)} />}
+        {selected && (
+          <ViewPanel viewId={selected} tick={tick} graph={graph} onClose={() => setSelected(null)} onSelectRecord={setTraceRid} />
+        )}
+        {traceRid && (
+          <div className="toast" onClick={() => setTraceRid(null)}>
+            selected record <code>{traceRid}</code> — trace drawer arrives in S3
+          </div>
+        )}
       </main>
     </div>
   );

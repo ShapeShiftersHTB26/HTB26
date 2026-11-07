@@ -31,6 +31,7 @@ function layout(graph: Graph): Node[] {
               {v.kind === "source" && <span className="vb">source</span>}
               {!v.head.schema && <span className="vb draft">draft</span>}
               {v.head.visual && <span className="vb">visual</span>}
+              {v.latest_instance && <span className="vb data">{v.latest_instance.row_count} rows</span>}
               {pending > 0 && <span className="vb pending">{pending} pending</span>}
             </div>
           </div>

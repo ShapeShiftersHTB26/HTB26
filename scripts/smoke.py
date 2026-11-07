@@ -60,8 +60,11 @@ SHAPE = {"type": "object", "required": ["k", "x"], "properties": {
     "k": {"type": "string", "x-role": "dimension"}, "x": {"type": "number", "x-role": "measure", "x-unit": "GBP"}}}
 
 
+CTX: dict = {}
+
+
 def stage1():
-    ctx = {}
+    ctx = CTX
 
     def propose():
         r = op("propose_schema", name="smoke_view", question="smoke?", schema=SHAPE, grain="one row per k",
@@ -86,12 +89,63 @@ def stage1():
     check("S1 get_view head + comments", head)
 
 
-STAGES = [stage0, stage1]
+PPD_COLUMNS = ["transaction_id", "price", "date", "postcode", "property_type", "new_build", "tenure", "paon",
+               "saon", "street", "locality", "town", "district", "county", "ppd_category", "record_status"]
+
+
+def stage2():
+    ctx = CTX
+
+    def visual():
+        r = op("propose_visual", view_id=ctx["view"], html="<html><head></head><body>smoke</body></html>",
+               rationale="smoke")
+        assert op("decide", target_id=r["id"], decision="approve")["status"] == "approved"
+    check("S2 propose_visual + approve", visual)
+
+    def ingest():
+        r = op("ingest", path="pp-2025.csv", name="smoke_source", columns=PPD_COLUMNS, parse_dates=["date"], limit=50)
+        assert r["row_count"] == 50, r["row_count"]
+        ctx["src"] = r["view_id"]
+        rows = op("get_records", view_id=r["view_id"], limit=3)["rows"]
+        assert rows and "_rid" in rows[0], rows
+        return "50 records"
+    check("S2 ingest + get_records", ingest)
+
+    def transform():
+        spec = {"ops": [{"op": "derive", "column": "k", "expr": "postcode.str.split(' ').str[0]"},
+                        {"op": "aggregate", "by": ["k"], "metrics": {"x": ["price", "mean"]}}]}
+        r = op("propose_transform", view_id=ctx["view"], kind="ops", spec=spec, reads=[ctx["src"]], rationale="smoke")
+        assert not r["warnings"], r["warnings"]
+        assert op("get_frontier", view_id=ctx["view"])["frontier"], "should be unresolved before approval"
+        op("decide", target_id=r["id"], decision="approve")
+        f = op("get_frontier", view_id=ctx["view"])["frontier"]
+        assert not f, f
+        g = op("get_graph")
+        assert any(e["from"] == ctx["src"] and e["to"] == ctx["view"] and not e["pending"] for e in g["edges"])
+    check("S2 propose_transform + frontier + edge", transform)
+
+    def new_inputs():
+        r = op("propose_schema", name="smoke_down", schema=SHAPE, grain="one", scope=[], preview=[], rationale="d")
+        op("decide", target_id=r["id"], decision="approve")
+        t = op("propose_transform", view_id=r["view_id"], kind="ops", reads=[], rationale="via new input",
+               spec={"ops": [{"op": "limit", "n": 1}]},
+               new_inputs=[{"name": "smoke_mid", "schema": SHAPE, "grain": "g", "scope": [], "preview": []}])
+        mid = t["new_inputs"][0]["view_id"]
+        op("decide", target_id=t["id"], decision="approve")
+        assert op("get_view", view_id=mid)["head"]["schema"], "bundled input shape not approved"
+        assert [x["view_id"] for x in op("get_frontier", view_id=r["view_id"])["frontier"]] == [mid]
+    check("S2 new_inputs bundle approval + frontier", new_inputs)
+
+
+STAGES = [stage0, stage1, stage2]
 
 if __name__ == "__main__":
+    import subprocess
     upto = int(sys.argv[sys.argv.index("--stage") + 1]) if "--stage" in sys.argv else len(STAGES) - 1
     for s in STAGES[: upto + 1]:
         s()
+    subprocess.call(["docker", "compose", "exec", "-T", "api", "python", "-m", "app.reset", "smoke_"],
+                    stdout=subprocess.DEVNULL)
     for label, ok, detail in results:
         print(f"{'PASS' if ok else 'FAIL'}  {label}  {detail}")
     sys.exit(0 if all(ok for _, ok, _ in results) else 1)

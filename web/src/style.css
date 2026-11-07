@@ -95,3 +95,16 @@ table.cols td { padding: 2px 8px 2px 0; vertical-align: top; }
 .rows th { position: sticky; top: 0; background: var(--bg); text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); }
 .rows td { padding: 3px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .rows tr.clickable:hover { background: var(--accent-soft); cursor: pointer; }
+
+/* visuals, transforms, data */
+.visual-frame { width: 100%; border: 1px solid var(--line); border-radius: 8px; background: white; display: block; }
+.kind { font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: var(--line); }
+.kind.agent_map, .kind.agent_reduce { background: var(--accent-soft); color: var(--accent); }
+.ops { margin: 6px 0; padding-left: 22px; }
+.ops li { margin: 3px 0; }
+.op { font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-right: 4px; }
+.prompt { background: var(--accent-soft); border-radius: 6px; padding: 6px 8px; margin-top: 6px; }
+.warnings { background: var(--warn-soft); color: var(--warn); border-radius: 6px; padding: 6px 8px 6px 24px; font-size: 13px; }
+.data { display: flex; flex-direction: column; gap: 10px; }
+.vb.data { background: var(--ok-soft); color: var(--ok); }
+.toast { position: absolute; bottom: 16px; left: 16px; background: var(--ink); color: white; padding: 8px 12px; border-radius: 8px; cursor: pointer; }

@@ -11,7 +11,7 @@ KINDS = {
     "visual": ("Visual", "RENDERS", "vis"),
 }
 LABEL_TO_KIND = {label: kind for kind, (label, _, _) in KINDS.items()}
-JSON_FIELDS = {"schema", "scope", "preview", "spec", "reads"}
+JSON_FIELDS = {"schema", "scope", "preview", "spec", "reads", "warnings"}
 VIEW_EDGES = "|".join(rel for _, rel, _ in KINDS.values())
 
 
@@ -30,7 +30,8 @@ def view_node(view_id: str) -> dict:
     return rows[0]["v"]
 
 
-def create(kind: str, view_id: str, props: dict, parent_id: str | None, author: str) -> dict:
+def create(kind: str, view_id: str, props: dict, parent_id: str | None, author: str,
+           pid: str | None = None) -> dict:
     label, rel, prefix = KINDS[kind]
     view_node(view_id)
     if parent_id:
@@ -39,7 +40,7 @@ def create(kind: str, view_id: str, props: dict, parent_id: str | None, author: 
             raise ValueError(f"parent '{parent_id}' is not a {kind} proposal")
         if par[0]["view_id"] != view_id:
             raise ValueError(f"parent '{parent_id}' belongs to a different view")
-    pid = g.new_id(prefix)
+    pid = pid or g.new_id(prefix)
     full = encode({**props, "id": pid, "view_id": view_id, "parent_id": parent_id,
                    "author": author, "status": "pending", "created_at": g.now()})
     g.run(f"MATCH (v:View {{id:$view_id}}) CREATE (p:{label})-[:{rel}]->(v) SET p = $props",

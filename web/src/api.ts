@@ -22,6 +22,7 @@ export type View = {
   auto_accept?: boolean;
   head: Record<Kind, string | null>;
   pending: Counts;
+  latest_instance?: { id: string; row_count: number } | null;
 };
 export type Graph = { views: View[]; edges: { from: string; to: string; pending?: boolean }[] };
 
@@ -40,13 +41,16 @@ export type Proposal = {
 export type Comment = { id: string; target_id: string; text: string; author: string; created_at: string };
 
 export type ViewDetail = {
-  view: Omit<View, "head" | "pending">;
+  view: Omit<View, "head" | "pending" | "latest_instance">;
   proposals: Record<Kind, Proposal[]>;
   head: Record<Kind, string | null>;
   comments: Record<string, Comment[]>;
   upstream: string[];
   downstream: string[];
+  instances: Instance[];
+  latest_instance: Instance | null;
 };
+export type Instance = { id: string; view_id: string; created_at: string; row_count: number; invalid_count: number };
 
 export type Column = { name: string; type?: string; role?: string; unit?: string; description?: string };
 export function columns(schema: any): Column[] {
