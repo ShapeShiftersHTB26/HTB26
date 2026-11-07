@@ -107,10 +107,15 @@ def evaluate(view_id: str, inputs: dict | None = None, _stack: tuple = ()) -> di
         frames[P.view_node(src)["name"]] = load_frame(iid)
         used.append(iid)
 
+    model = None
     if transform["kind"] == "ops":
         out = OPS.run(frames, transform["spec"])
+    elif transform["kind"] in ("agent_map", "agent_reduce"):
+        from .transforms import agentic as AG
+        fn = AG.run_map if transform["kind"] == "agent_map" else AG.run_reduce
+        out, model = fn(frames, transform["spec"], shape["schema"]), AG.MODEL
     else:
-        raise ValueError(f"transform kind '{transform['kind']}' is not implemented yet (stage 4)")
+        raise ValueError(f"unknown transform kind '{transform['kind']}'")
 
     props = shape["schema"].get("properties", {})
     missing = [c for c in props if c not in out.columns]
@@ -123,7 +128,8 @@ def evaluate(view_id: str, inputs: dict | None = None, _stack: tuple = ()) -> di
     invalid = len(rows) - len(keep)
     rows = [rows[i] for i in keep]
     srcs = [srcs[i] for i in keep] if srcs else None
-    res = write_instance(view_id, rows, srcs, shape["id"], transform["id"], used, invalid_count=invalid)
+    res = write_instance(view_id, rows, srcs, shape["id"], transform["id"], used, invalid_count=invalid,
+                         model=model)
     return {**res, "upstream": upstream}
 
 

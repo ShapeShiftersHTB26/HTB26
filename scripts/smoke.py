@@ -155,7 +155,29 @@ def stage3():
     check("S3 trace to source", trace)
 
 
-STAGES = [stage0, stage1, stage2, stage3]
+def stage4():
+    ctx = CTX
+
+    def reduce_():
+        shape = {"type": "object", "required": ["finding"], "properties": {
+            "finding": {"type": "string", "x-role": "text", "description": "one notable observation"}}}
+        r = op("propose_schema", name="smoke_reduce", schema=shape, grain="one row per finding", scope=[],
+               preview=[], rationale="smoke")
+        op("decide", target_id=r["id"], decision="approve")
+        t = op("propose_transform", view_id=r["view_id"], kind="agent_reduce", reads=[ctx["view"]],
+               spec={"prompt": "Give exactly one short observation about the highest x.", "max_rows": 200},
+               rationale="smoke")
+        op("decide", target_id=t["id"], decision="approve")
+        e = op("evaluate", view_id=r["view_id"])
+        assert e["row_count"] >= 1, e
+        row = op("get_records", view_id=r["view_id"], limit=1)["rows"][0]
+        levels = op("trace", rid=row["_rid"])["levels"]
+        assert levels[-1]["view_kind"] == "source", levels[-1]
+        return f"{e['row_count']} finding(s); cited {levels[1]['count']} row(s)"
+    check("S4 agent_reduce evaluate + cited trace", reduce_)
+
+
+STAGES = [stage0, stage1, stage2, stage3, stage4]
 
 if __name__ == "__main__":
     import subprocess

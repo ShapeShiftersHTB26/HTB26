@@ -19,7 +19,7 @@ services:
     environment:
       MEMGRAPH_URI: bolt://memgraph:7687
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      BACKTRACE_MODEL: ${BACKTRACE_MODEL:-claude-sonnet-5-5}
+      BACKTRACE_MODEL: ${BACKTRACE_MODEL:-claude-opus-5-5}
       WATCHFILES_FORCE_POLLING: "true"
     volumes:
       - ./api/app:/srv/app

@@ -42,7 +42,7 @@ scripts/              reset.py, seed.py, smoke.py
 |---|---|---|---|
 | `memgraph` | `memgraph/memgraph` | 7687 | volume `mg_data:/var/lib/memgraph` |
 | `lab` | `memgraph/lab` | 3000 | `QUICK_CONNECT_MG_HOST=memgraph` |
-| `api` | `./api` | 8000 | uvicorn `--reload`; mounts `./api/app` and `./data:/data`; env `MEMGRAPH_URI`, `ANTHROPIC_API_KEY`, `BACKTRACE_MODEL=claude-sonnet-5-5` |
+| `api` | `./api` | 8000 | uvicorn `--reload`; mounts `./api/app` and `./data:/data`; env `MEMGRAPH_URI`, `ANTHROPIC_API_KEY`, `BACKTRACE_MODEL=claude-opus-5-5` |
 | `web` | `./web` | 5173 | Vite dev server; proxies `/api` → `api:8000` |
 
 The app agent is Claude Code on the host, launched in `agent/`. `agent/.mcp.json` points at `http://localhost:8000/mcp/` (streamable HTTP).
@@ -172,7 +172,7 @@ Each operation is a typed function in `ops.py`, registered with `@operation`. It
   - **downstream:** a new view whose transform reads an existing one
   - Skills: `propose-visual`, `reverse-step`, `derive-downstream`
 - [x] **S3 Evaluate:** ops executor, records with lineage, the Data tab with visuals over real rows, `trace` and the drawer. **This is the minimum demo.**
-- [ ] **S4 Agentic + join:** `agent_map` and `agent_reduce` with caching; the `join` op.
+- [x] **S4 Agentic + join:** *(join op still TODO)* `agent_map` and `agent_reduce` with caching; the `join` op.
 - [ ] **S5 Polish:** dry run on preview rows, auto-accept, `wait_for_decision`, stale flags, demo rehearsal and a graph snapshot.
 
 ## Iteration rules

@@ -12,5 +12,6 @@ The original view is left untouched; its shape, transform and visual stay as the
 3. **Propose its transform straight away,** reading the source view. This is what makes it downstream, and it draws the edge on the canvas:
    - Deterministic, e.g. the maximum: `{"ops": [{"op": "sort", "by": ["avg_price"], "desc": true}, {"op": "limit", "n": 1}]}`. Each output row keeps the source row as its lineage.
    - Agentic (`agent_reduce`) for judgement, e.g. "3 notable trends" or "summarise".
+   - Agentic per row (`agent_map`) to **add inferred fields**. The new view's shape = the source columns you want to keep, plus the new fields (e.g. `lat` with `x-role: geo_lat`, and `lon` with `x-role: geo_lon`). The model fills only the fields the source lacks; the others pass through. Spec: `{"prompt": "Approximate centre coordinates of each UK postcode district.", "batch_size": 50}`. Note in the scope that the values are model-inferred.
 4. Ask the user to approve the shape, then the transform. Each one is a separate decision unless auto-accept is on.
 5. Once both are approved, offer a visual (`propose-visual`) and evaluation (`evaluate-trace`).

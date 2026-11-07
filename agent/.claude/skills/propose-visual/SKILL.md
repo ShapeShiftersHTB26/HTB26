@@ -26,6 +26,13 @@ window.backtraceSelect(rid)   // call on click; opens the trace drawer
 - Design for a 360px-tall frame: large readable text, one accent colour, and a legible light background.
 - If `mode === "preview"`, show a small "preview" badge.
 
+**Missing columns (e.g. a map needs coordinates):** never hardcode data such as coordinates in the HTML. Instead:
+1. Derive a downstream view that adds the missing fields (`derive-downstream`, usually an `agent_map` transform, e.g. inferring `lat`/`lon` per postcode district).
+2. Propose the visual on that new view.
+3. Leave a `comment` (author `agent`) on the proposal that asked for it, saying where the answer lives.
+
+For maps, use Leaflet (`https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js` plus `leaflet.css`) with OpenStreetMap tiles and circle markers sized or coloured by the measure. A plain SVG scatter of lon/lat also works offline.
+
 ## 3. Propose and iterate
 - Call `propose_visual(view_id, html, rationale)`. The rationale says why this form suits the question.
 - Tell the user in one line, and point them to the Visual tab.
