@@ -7,6 +7,7 @@ import jsonschema
 from . import executor as X
 from . import graph as g
 from . import pg as PG
+from . import store as ST
 from . import proposals as P
 from .registry import operation
 from .transforms import ops as OPS
@@ -352,11 +353,12 @@ def _resolve_path(path: str) -> str:
 
 @operation
 def ingest(path: str, name: str, columns: list[str] | None = None, filter: str | None = None,
-           parse_dates: list[str] | None = None, limit: int | None = None) -> dict:
+           parse_dates: list[str] | None = None, limit: int | None = None, storage: str | None = None) -> dict:
     """Load a CSV from data/raw/ as a new SOURCE view (with records). `path` is relative to data/raw/.
     - columns: column names, required when the CSV has no header row
     - filter: optional pandas expression over column names to keep a slice, e.g. "district == 'READING'"
     - parse_dates: columns to parse as dates; limit: max rows
+    - storage: where this source's rows live: "postgres" or "graph" (Record nodes); default from BACKTRACE_STORE
     The shape is inferred (crude roles) and auto-approved; refine it afterwards with propose_schema
     (parent_id = the returned schema_id). The parsing rules become the view's RECIPE; this first run appends
     batch 1 and publishes the first snapshot (with hashes). Add later files with append_batch.
@@ -364,11 +366,12 @@ def ingest(path: str, name: str, columns: list[str] | None = None, filter: str |
     spec = {"type": "file", "path": _resolve_path(path), "columns": columns, "filter": filter,
             "parse_dates": parse_dates, "limit": limit}
     spec = {k: v for k, v in spec.items() if v is not None}
+    store_name = ST.get(storage) and (storage or ST.DEFAULT)
     df = SRC.run(spec)
     schema = SRC.infer_schema(df)
     view_id = g.new_id("v")
     g.run("CREATE (v:View) SET v = $props", props={"id": view_id, "name": name, "kind": "source",
-          "question": "", "auto_accept": False, "created_at": g.now()})
+          "question": "", "auto_accept": False, "created_at": g.now(), "store": store_name})
     preview = X.to_rows(df.head(5))
     s = P.create("schema", view_id, {"schema": schema, "grain": "one row per source record",
                                      "scope": [f"filter: {filter}"] if filter else ["all rows"],
@@ -485,7 +488,7 @@ def get_records(view_id: str | None = None, instance_id: str | None = None, wher
         instance_id = inst["id"]
     else:
         inst = g.run("MATCH (i:Instance {id:$i}) RETURN i", i=instance_id)[0]["i"]
-    total, rows = PG.read(instance_id, where=where, limit=min(int(limit), 2000), offset=int(offset))
+    total, rows = ST.read(instance_id, where=where, limit=min(int(limit), 2000), offset=int(offset))
     return {"instance": inst, "total": total, "rows": rows}
 
 

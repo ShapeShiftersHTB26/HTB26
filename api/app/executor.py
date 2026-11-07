@@ -6,9 +6,8 @@ import jsonschema
 import pandas as pd
 
 from . import graph as g
-from . import graphrecords as GR
 from . import hashing as H
-from . import pg
+from . import store as ST
 from . import proposals as P
 
 
@@ -30,18 +29,21 @@ def write_instance(view_id: str, rows: list[dict], srcs: list[list[str]] | None,
     iid = g.new_id("i")
     if props is None:
         props = P.decode(g.run("MATCH (s:SchemaVersion {id:$s}) RETURN s", s=schema_id)[0]["s"])["schema"]["properties"]
-    table = pg.write_raw(iid, view_id, props, rows) if raw else pg.write_derived(iid, view_id, props, rows, srcs)
-    storage = f"{'raw' if raw else 'derived'}.{table}"
+    store_name = ST.name_for_view(view_id)
+    st = ST.get(store_name)
+    table = st.write_raw(iid, view_id, props, rows) if raw else st.write_derived(iid, view_id, props, rows, srcs)
+    storage = f"{store_name}:{table}"
     g.run("MATCH (v:View {id:$v}), (s:SchemaVersion {id:$s}), (t:Transform {id:$t}) "
           "CREATE (i:Instance)-[:OF]->(v) SET i = $props "
           "CREATE (i)-[:USED_SCHEMA]->(s) CREATE (i)-[:USED_TRANSFORM]->(t)",
           v=view_id, s=schema_id, t=transform_id,
           props={k: val for k, val in {"id": iid, "view_id": view_id, "created_at": g.now(),
                                        "row_count": len(rows), "invalid_count": invalid_count,
-                                       "model": model, "storage": storage}.items() if val is not None})
+                                       "model": model, "storage": storage,
+                                       "store": store_name}.items() if val is not None})
     for src in input_instances:
         g.run("MATCH (i:Instance {id:$i}), (j:Instance {id:$j}) CREATE (i)-[:FROM]->(j)", i=iid, j=src)
-    GR.mirror(iid, view_id, rows, srcs)
+    st.attach(iid, "Instance")
     hashes = {}
     if formula:
         hashes = seal(iid, formula, [instance_node(x)["hash"] for x in input_instances])
@@ -58,7 +60,7 @@ def latest_instance(view_id: str) -> dict | None:
 
 
 def load_frame(instance_id: str) -> pd.DataFrame:
-    _, recs = pg.read(instance_id)
+    _, recs = ST.read(instance_id)
     return pd.DataFrame(recs) if recs else pd.DataFrame(columns=["_rid"])
 
 
@@ -85,7 +87,7 @@ def instance_node(iid: str) -> dict:
 
 def seal(iid: str, formula: str, input_hashes: list[str], ordered: bool = False) -> dict:
     """Hash the stored rows (read back from Postgres) and record formula/data/instance hashes on the manifest."""
-    root, n = H.data_root(pg.stream(iid))
+    root, n = H.data_root(ST.stream(iid))
     ih = H.instance_hash(formula, root, input_hashes, ordered=ordered)
     g.run("MATCH (i:Instance {id:$i}) SET i.formula_hash = $f, i.data_root = $r, i.hash = $h, i.engine = $e",
           i=iid, f=formula, r=root, h=ih, e=H.ENGINE)
@@ -187,15 +189,18 @@ def append_batch(view_id: str, path: str | None = None, df=None) -> dict:
         raise ValueError(f"file has columns not in the source shape: {unknown}")
     formula = source_formula(shape, recipe)
     batch_id = g.new_id("b")
-    table = pg.write_raw(batch_id, view_id, props, rows)
-    b_root, n = H.data_root(pg.stream(batch_id))
+    store_name = ST.name_for_view(view_id)
+    st = ST.get(store_name)
+    table = st.write_raw(batch_id, view_id, props, rows)
+    b_root, n = H.data_root(st.stream(batch_id))
     sha = H.file_sha256(spec["path"])
     bh = H.batch_hash(formula, sha, b_root)
     g.run("MATCH (v:View {id:$v}), (t:Transform {id:$t}) CREATE (b:Batch)-[:OF]->(v) SET b = $props "
           "CREATE (b)-[:RAN]->(t)", v=view_id, t=recipe["id"],
           props={"id": batch_id, "view_id": view_id, "transform_id": recipe["id"], "path": spec["path"],
-                 "file_sha256": sha, "row_count": n, "data_root": b_root, "hash": bh, "created_at": g.now()})
-    GR.mirror(batch_id, view_id, rows, label="Batch")
+                 "file_sha256": sha, "row_count": n, "data_root": b_root, "hash": bh, "created_at": g.now(),
+                 "store": store_name})
+    st.attach(batch_id, "Batch")
     prev = latest_instance(view_id)
     batches = (json.loads(prev["batches"]) if prev and prev.get("batches") else []) + [batch_id]
     return publish_snapshot(view_id, shape, recipe, batches, table)
@@ -203,7 +208,8 @@ def append_batch(view_id: str, path: str | None = None, df=None) -> dict:
 
 def publish_snapshot(view_id: str, shape: dict, recipe: dict, batches: list[str], table: str) -> dict:
     iid = g.new_id("i")
-    pg.register_snapshot(iid, view_id, table, batches)
+    store_name = ST.name_for_view(view_id)
+    ST.get(store_name).register_snapshot(iid, view_id, table, batches)
     bnodes = {r["b"]["id"]: r["b"] for r in g.run("MATCH (b:Batch) WHERE b.id IN $ids RETURN b", ids=batches)}
     rows = sum(bnodes[b]["row_count"] for b in batches)
     g.run("MATCH (v:View {id:$v}), (s:SchemaVersion {id:$s}), (t:Transform {id:$t}) "
@@ -212,7 +218,7 @@ def publish_snapshot(view_id: str, shape: dict, recipe: dict, batches: list[str]
           "WITH i MATCH (b:Batch) WHERE b.id IN $batches CREATE (i)-[:INCLUDES]->(b)",
           v=view_id, s=shape["id"], t=recipe["id"], batches=batches,
           props={"id": iid, "view_id": view_id, "created_at": g.now(), "row_count": rows, "invalid_count": 0,
-                 "storage": f"raw.{table}", "batches": json.dumps(batches)})
+                 "storage": f"{store_name}:{table}", "store": store_name, "batches": json.dumps(batches)})
     hashes = seal(iid, source_formula(shape, recipe), [bnodes[b]["hash"] for b in batches], ordered=True)
     return {"instance_id": iid, "row_count": rows, "batches": batches, **hashes}
 
@@ -229,7 +235,7 @@ def verify(instance_id: str, recompute: bool = True, _seen: dict | None = None) 
     r = g.run("MATCH (i:Instance {id:$i})-[:USED_SCHEMA]->(s), (i)-[:USED_TRANSFORM]->(t), (i)-[:OF]->(v) "
               "RETURN s, t, v", i=instance_id)[0]
     shape, transform, view = P.decode(r["s"]), P.decode(r["t"]), r["v"]
-    root, n = H.data_root(pg.stream(instance_id))
+    root, n = H.data_root(ST.stream(instance_id))
     node = {"instance_id": instance_id, "view_id": view["id"], "view_name": view["name"],
             "kind": transform["kind"], "rows": n, "stored_hash": i.get("hash"), "checks": {}, "inputs": []}
     checks = node["checks"]
@@ -242,7 +248,7 @@ def verify(instance_id: str, recompute: bool = True, _seen: dict | None = None) 
         bhashes = []
         for b in batches:
             bn = bnodes[b]
-            b_root, _ = H.data_root(pg.stream(b))
+            b_root, _ = H.data_root(ST.stream(b))
             import os
             file_ok = (H.file_sha256(bn["path"]) == bn["file_sha256"]) if os.path.isfile(bn["path"]) else None
             bh = H.batch_hash(formula, bn["file_sha256"], b_root)
@@ -296,7 +302,7 @@ def trace(rid: str, sample: int = 20) -> dict:
     def strip(rows):
         return [{k: v for k, v in x.items() if k != "_src"} for x in rows]
 
-    root = pg.by_rids([rid])
+    root = ST.by_rids([rid])
     if not root:
         raise ValueError(f"no record '{rid}'")
     levels = [{**meta(rid.split(":")[0]), "count": 1, "sample": strip(root)}]
@@ -311,7 +317,7 @@ def trace(rid: str, sample: int = 20) -> dict:
             by_inst.setdefault(x.split(":")[0], []).append(x)
         frontier = []
         for iid, xs in by_inst.items():
-            rows = pg.by_rids(xs)
+            rows = ST.by_rids(xs)
             levels.append({**meta(iid), "count": len(xs), "sample": strip(rows[:sample])})
             frontier += rows
     return {"rid": rid, "levels": levels}

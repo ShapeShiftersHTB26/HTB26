@@ -51,8 +51,17 @@ A rid stays `<instance_or_batch_id>:<n>`, so the lineage format is unchanged.
   - The trace drawer shows each level's hash.
 - **One-offs:** `python -m app.backfill_hashes` (already run).
 
-## Optional graph copy of rows
-With `BACKTRACE_GRAPH_RECORDS=true` (the default), every batch and derived instance is also written to Memgraph the way the first version did it: `(Record)-[:IN]->(Instance|Batch)` and `(Record)-[:DERIVED_FROM]->(Record)`. It's for exploring in Lab and Cypher. Reads and hashes still come from Postgres. `python -m app.mirror_records` copies existing rows across. Turn it off for large datasets.
+## Pluggable row stores
+Rows can live in any store that implements the small interface in `api/app/store.py`: write a raw batch, write a derived instance, register a snapshot, read, read by rids, stream, drop.
+- **`postgres`** (`pg.py`): the layout above.
+- **`graph`** (`graphstore.py`): rows as Memgraph Record nodes, as in the first version, with `(Record)-[:IN]->(Instance|Batch)` and `(Record)-[:DERIVED_FROM]->(Record)`.
+- **Choosing a store:**
+  - per source: `ingest(..., storage="graph")`;
+  - otherwise the default from `BACKTRACE_STORE`, which is `postgres`.
+
+  Derived instances use their view's `store` if it's set, else the default. Each Batch and Instance records its `store`, and every read, trace and verify is routed by it, so one chain can mix stores.
+- **Hashes are store-independent.** Every store returns rows in the same canonical form `{_rid, fields, _src}`.
+- **Adding a store** (e.g. Parquet files or DuckDB) means writing one module with those functions and adding it to `STORES`.
 
 ## Phases
 1. **Data plane:** Postgres connection, the `raw`, `derived` and `meta` schemas, the append-only trigger, all instance rows and lineage in Postgres, `get_records` and `trace` reading from Postgres, and a migration of the existing Memgraph records.

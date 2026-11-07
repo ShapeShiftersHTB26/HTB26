@@ -215,7 +215,40 @@ def stage_dp():
     check("DP verify detects a tampered row", tamper)
 
 
-STAGES = [stage0, stage1, stage2, stage3, stage4, stage_dp]
+def stage_store():
+    ctx = CTX
+
+    def graph_source():
+        r = op("ingest", path="pp-2025.csv", name="smoke_gsrc", columns=PPD_COLUMNS, parse_dates=["date"],
+               limit=30, storage="graph")
+        assert r["row_count"] == 30, r
+        ctx["gsrc"] = r["view_id"]
+        rows = op("get_records", view_id=r["view_id"], limit=2)["rows"]
+        assert rows and "_rid" in rows[0], rows
+        a = op("append_batch", view_id=r["view_id"], path="pp-2025.csv")
+        assert len(a["batches"]) == 2 and a["row_count"] == 60, a
+        return "graph-stored source: 2 batches, 60 rows"
+    check("STORE ingest + append_batch into the graph store", graph_source)
+
+    def mixed_chain():
+        s = op("propose_schema", name="smoke_gview", schema=SHAPE, grain="one row per k", scope=[], preview=[],
+               rationale="derived from a graph-stored source")
+        op("decide", target_id=s["id"], decision="approve")
+        spec = {"ops": [{"op": "derive", "column": "k", "expr": "postcode.str.split(' ').str[0]"},
+                        {"op": "aggregate", "by": ["k"], "metrics": {"x": ["price", "mean"]}}]}
+        t = op("propose_transform", view_id=s["view_id"], kind="ops", spec=spec, reads=[ctx["gsrc"]], rationale="smoke")
+        op("decide", target_id=t["id"], decision="approve")
+        e = op("evaluate", view_id=s["view_id"])
+        v = op("verify", instance_id=e["instance_id"])
+        assert v["ok"] and v["checks"]["recomputed"], v
+        row = op("get_records", view_id=s["view_id"], limit=1)["rows"][0]
+        levels = op("trace", rid=row["_rid"])["levels"]
+        assert levels[-1]["view_kind"] == "source", levels[-1]
+        return f"verified; trace {' <- '.join(L['view_name'] for L in levels)}"
+    check("STORE derived (postgres) on graph source: verify + trace", mixed_chain)
+
+
+STAGES = [stage0, stage1, stage2, stage3, stage4, stage_dp, stage_store]
 
 if __name__ == "__main__":
     import subprocess

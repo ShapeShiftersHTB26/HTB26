@@ -257,3 +257,7 @@ def wipe() -> None:
     run("DROP SCHEMA IF EXISTS derived CASCADE")
     run("DROP SCHEMA IF EXISTS meta CASCADE")
     ensure_schema()
+
+
+def attach(prefix: str, label: str) -> None:
+    pass  # rows are located through meta.tables; nothing to link
