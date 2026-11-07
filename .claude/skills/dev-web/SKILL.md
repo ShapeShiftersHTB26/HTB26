@@ -15,6 +15,9 @@ web/src/Canvas.tsx         react-flow + dagre (TB): view, data and visual nodes;
 web/src/ViewPanel.tsx      tabs: Shape | Visual | Transform | Data
 web/src/ProposalCards.tsx  generic sibling cards + approve/discard/comment; takes a renderBody prop
 web/src/VisualFrame.tsx    sandboxed iframe: injects window.BACKTRACE, listens for postMessage select
+web/src/Visual.tsx         loads the views a visual `uses`, renders VisualFrame
+web/src/VisualWindow.tsx   floating draggable/resizable window per visual (App keeps the window list)
+web/src/IntentPanel.tsx    intent story, Open result, Ask a follow-up
 web/src/RowsTable.tsx      plain table; the fallback when there's no visual
 web/src/TraceDrawer.tsx    (S3)
 ```

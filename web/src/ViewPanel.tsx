@@ -4,7 +4,6 @@ import ProposalCards from "./ProposalCards";
 import RowsTable from "./RowsTable";
 import ShapeBody from "./ShapeBody";
 import TransformBody from "./TransformBody";
-import Visual from "./Visual";
 
 export type Tab = Kind | "data";
 const TABS: { key: Tab; label: string }[] = [
@@ -24,6 +23,7 @@ export default function ViewPanel(props: {
   onSelectRecord: (rid: string) => void;
   tab: Tab;
   onTab: (t: Tab) => void;
+  onOpenVisual: (visualId: string, viewId: string) => void;
 }) {
   const [detail, setDetail] = useState<ViewDetail | null>(null);
   const { tab, onTab: setTab } = props;
@@ -93,7 +93,8 @@ export default function ViewPanel(props: {
       <div className="tab-body">
         {tab === "data" ? (
           <DataTab data={data} cols={cols} visuals={detail.proposals.visual.filter((p) => detail.visual_heads.includes(p.id))}
-                   shape={shape} view={v} graph={props.graph} onSelect={props.onSelectRecord} />
+                   shape={shape} view={v} graph={props.graph} onSelect={props.onSelectRecord}
+                   onOpenVisual={(id) => props.onOpenVisual(id, v.id)} />
         ) : (
           <ProposalCards
             proposals={detail.proposals[tab]}
@@ -107,8 +108,7 @@ export default function ViewPanel(props: {
               ) : tab === "transform" ? (
                 <TransformBody p={p} names={names} />
               ) : (
-                <Visual p={p} schema={shape?.schema} rows={data?.rows || []} mode={data?.mode || "preview"}
-                        view={{ id: v.id, name: v.name }} graph={props.graph} onSelect={props.onSelectRecord} />
+                <VisualCardBody p={p} graph={props.graph} onOpen={() => props.onOpenVisual(p.id, v.id)} />
               )
             }
           />
@@ -126,6 +126,7 @@ function DataTab(props: {
   view: { id: string; name: string };
   graph: Graph;
   onSelect: (rid: string) => void;
+  onOpenVisual: (visualId: string) => void;
 }) {
   const { data } = props;
   const [busy, setBusy] = useState(false);
@@ -162,11 +163,28 @@ function DataTab(props: {
   return (
     <div className="data">
       {bar}
-      {props.visuals.map((vis) => (
-        <Visual key={vis.id} p={vis} schema={props.shape?.schema} rows={data.rows} mode="instance"
-                view={props.view} graph={props.graph} onSelect={props.onSelect} />
-      ))}
+      {props.visuals.length > 0 && (
+        <div className="visual-buttons">
+          <span className="label">visuals</span>
+          {props.visuals.map((vis) => (
+            <button key={vis.id} onClick={() => props.onOpenVisual(vis.id)}>
+              ◧ {props.graph.views.find((x) => x.id === props.view.id)?.visuals?.find((x) => x.id === vis.id)?.title || "visual"} ↗
+            </button>
+          ))}
+        </div>
+      )}
       <RowsTable cols={props.cols} rows={data.rows} onSelect={props.onSelect} />
+    </div>
+  );
+}
+
+function VisualCardBody(props: { p: Proposal; graph: Graph; onOpen: () => void }) {
+  const uses: string[] = props.p.uses || [];
+  const names = uses.map((u) => props.graph.views.find((v) => v.id === u)?.name || u);
+  return (
+    <div className="visual-card">
+      <button className="approve" onClick={props.onOpen}>Open visual ↗</button>
+      {names.length > 0 && <span className="muted small"> also uses {names.map((n) => <code key={n}>{n} </code>)}</span>}
     </div>
   );
 }

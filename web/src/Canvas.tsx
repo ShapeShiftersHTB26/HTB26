@@ -5,7 +5,8 @@ import { Graph, Intent, View } from "./api";
 export type Lens = "outcome" | "detail";
 export type CanvasTarget =
   | { type: "view"; viewId: string; tab: "schema" | "visual" | "transform" | "data" | null }
-  | { type: "intent"; intentId: string };
+  | { type: "intent"; intentId: string }
+  | { type: "visual"; visualId: string; viewId: string };
 
 const SIZE = { view: [210, 64], data: [150, 44], visual: [150, 44], intent: [240, 74] } as const;
 const ACCENT = "#6a4cff";
@@ -210,7 +211,7 @@ export default function Canvas(props: {
           if (kind === "q") props.onSelect({ type: "intent", intentId: id });
           if (kind === "x") {
             const owner = props.graph.views.find((v) => v.visuals?.some((x) => x.id === id));
-            if (owner) props.onSelect({ type: "view", viewId: owner.id, tab: "visual" });
+            if (owner) props.onSelect({ type: "visual", visualId: id, viewId: owner.id });
           }
         }}
       >

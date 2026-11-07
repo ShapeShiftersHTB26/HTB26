@@ -23,6 +23,7 @@ export default function Visual(props: {
   view: { id: string; name: string };
   graph: Graph;
   onSelect: (rid: string) => void;
+  fill?: boolean;
 }) {
   const uses: string[] = props.p.uses || [];
   const [views, setViews] = useState<Record<string, ViewData> | null>(uses.length ? null : {});
@@ -43,13 +44,13 @@ export default function Visual(props: {
 
   const names = uses.map((u) => props.graph.views.find((v) => v.id === u)?.name || u);
   return (
-    <div>
+    <div className={props.fill ? "visual-fill" : ""}>
       {names.length > 0 && <div className="muted small">also uses {names.map((n) => <code key={n}>{n} </code>)}</div>}
       {views === null ? (
         <div className="muted small">loading views…</div>
       ) : (
         <VisualFrame html={props.p.html} schema={props.schema} rows={props.rows} mode={props.mode}
-                     view={props.view} views={views} onSelect={props.onSelect} />
+                     view={props.view} views={views} onSelect={props.onSelect} fill={props.fill} />
       )}
     </div>
   );

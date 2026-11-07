@@ -13,6 +13,7 @@ export default function VisualFrame(props: {
   views?: Record<string, ViewData>;
   onSelect?: (rid: string) => void;
   height?: number;
+  fill?: boolean;
 }) {
   const ref = useRef<HTMLIFrameElement>(null);
 
@@ -43,7 +44,7 @@ export default function VisualFrame(props: {
       className="visual-frame"
       sandbox="allow-scripts"
       srcDoc={srcdoc}
-      style={{ height: props.height ?? 360 }}
+      style={{ height: props.fill ? "100%" : props.height ?? 360 }}
       title={`visual of ${props.view.name}`}
     />
   );

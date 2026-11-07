@@ -4,6 +4,7 @@ import Canvas, { CanvasTarget, Lens } from "./Canvas";
 import IntentPanel from "./IntentPanel";
 import TraceDrawer from "./TraceDrawer";
 import ViewPanel, { Tab } from "./ViewPanel";
+import VisualWindow, { Win } from "./VisualWindow";
 
 export default function App() {
   const [graph, setGraph] = useState<Graph>({ views: [], edges: [], intents: [] });
@@ -15,8 +16,23 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("schema");
   const [lens, setLens] = useState<Lens>("outcome");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [wins, setWins] = useState<Win[]>([]);
+  const openVisual = (visualId: string, viewId: string) =>
+    setWins((ws) => {
+      const z = Math.max(20, ...ws.map((w) => w.z)) + 1;
+      const existing = ws.find((w) => w.visualId === visualId);
+      if (existing) return ws.map((w) => (w === existing ? { ...w, z } : w));
+      const n = ws.length % 6;
+      return [...ws, { key: `${visualId}:${Date.now()}`, visualId, viewId, x: 80 + n * 36, y: 90 + n * 36, z }];
+    });
+  const focusWin = (key: string) =>
+    setWins((ws) => {
+      const z = Math.max(20, ...ws.map((w) => w.z));
+      return ws.map((w) => (w.key === key && w.z < z ? { ...w, z: z + 1 } : w));
+    });
 
   const open = (t: CanvasTarget) => {
+    if (t.type === "visual") return openVisual(t.visualId, t.viewId);
     if (t.type === "intent") {
       setIntent(t.intentId);
       setSelected(null);
@@ -80,12 +96,17 @@ export default function App() {
         )}
         {selected && (
           <ViewPanel viewId={selected} tick={tick} graph={graph} onClose={() => setSelected(null)}
-                     onSelectRecord={setTraceRid} tab={tab} onTab={setTab} />
+                     onSelectRecord={setTraceRid} tab={tab} onTab={setTab} onOpenVisual={openVisual} />
         )}
         {intent && (
           <IntentPanel intentId={intent} tick={tick} expanded={expanded.has(intent)}
                        onToggleExpand={() => toggleExpand(intent)} onOpen={open} onClose={() => setIntent(null)} />
         )}
+        {wins.map((w) => (
+          <VisualWindow key={w.key} win={w} graph={graph} onSelect={setTraceRid} onFocus={() => focusWin(w.key)}
+                        onClose={() => setWins((ws) => ws.filter((x) => x.key !== w.key))}
+                        onMove={(x, y) => setWins((ws) => ws.map((o) => (o.key === w.key ? { ...o, x, y } : o)))} />
+        ))}
         {traceRid && (
           <TraceDrawer rid={traceRid} names={new Map(graph.views.map((v) => [v.id, v.name]))}
                        onClose={() => setTraceRid(null)} onSelect={setTraceRid}

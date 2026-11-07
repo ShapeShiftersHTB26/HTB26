@@ -78,7 +78,11 @@ export default function IntentPanel(props: {
             <button
               className="approve"
               onClick={() =>
-                props.onOpen({ type: "view", viewId: q.result_view_id, tab: q.result_kind === "visual" ? "visual" : "data" })
+                props.onOpen(
+                  q.result_kind === "visual"
+                    ? { type: "visual", visualId: q.result_current, viewId: q.result_view_id }
+                    : { type: "view", viewId: q.result_view_id, tab: "data" },
+                )
               }
             >
               Open result

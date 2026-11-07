@@ -178,9 +178,10 @@ Each operation is a typed function in `ops.py`, registered with `@operation`. It
   - *TODO:* collapse edges that span many ranks once the graph grows.
 - **Side panel** for the selected view:
   - **Shape tab:** proposal cards, with siblings side by side and the approved chain highlighted. Pending cards have Approve, Discard and Comment buttons. Each card shows columns (with role and unit), grain, scope, a preview table and the rationale.
-  - **Visual tab:** the same card layout, with the HTML rendered in a sandboxed iframe over the preview rows or the latest instance.
+  - **Visual tab:** the same card layout. Each card has an **Open visual** button; visuals are never embedded in the sidebar.
   - **Transform tab:** the same card layout, with the ops written out in plain language.
   - **Data tab** (stage 3): instance picker, the visual over the real rows (or a table), and an Evaluate button.
+- **Visual windows:** each visual opens in its own floating window: draggable by its header, resizable from the corner, several open at once, clicked to bring to the front. Windows open from a visual node on the canvas, a card's Open button, the Data tab's visual buttons, or an intent's Open result. A window re-renders when its view gets a new instance.
 - **Trace drawer** (stage 3): opened by a `select` postMessage or a click on a table row.
 
 ## Stages (each ends with `docker compose up` and the demo path working so far)

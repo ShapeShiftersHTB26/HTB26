@@ -156,3 +156,17 @@ table.cols td { padding: 2px 8px 2px 0; vertical-align: top; }
 .ask input { flex: 1; font-size: 15px; padding: 6px 10px; }
 .waiting { background: var(--warn-soft); color: var(--warn); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
 .waiting code { background: rgba(255,255,255,.6); padding: 0 4px; border-radius: 4px; }
+
+/* floating visual windows */
+.vwin { position: fixed; width: 720px; height: 480px; min-width: 320px; min-height: 220px; resize: both; overflow: hidden;
+        background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.18);
+        display: flex; flex-direction: column; }
+.vwin-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--line);
+             cursor: move; user-select: none; background: var(--bg); border-radius: 12px 12px 0 0; }
+.vwin-title { font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vwin-body { flex: 1; min-height: 0; padding: 6px; display: flex; flex-direction: column; }
+.visual-fill { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.visual-fill .visual-frame { flex: 1; min-height: 0; }
+.visual-buttons { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.trace { z-index: 1000; }
+body.dragging iframe { pointer-events: none; }
