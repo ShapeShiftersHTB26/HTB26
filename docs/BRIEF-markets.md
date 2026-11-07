@@ -1,6 +1,14 @@
 # Next stage (DRAFT): prediction markets on verifiable views
 
-*Status: draft for discussion. Nothing here is built yet. Refine it before it goes into [SPEC.md](SPEC.md).*
+*Status: draft for discussion. Refine it before it goes into [SPEC.md](SPEC.md).*
+
+**Already built (by MIDAV0), in [`prediction-market/`](../prediction-market/README.md):** binary YES/NO markets on a local Solana validator.
+- **Anchor program:** mUSDC (mock USDC) collateral, minting and merging YES+NO sets, admin resolution, redemption (a void market pays 0.5).
+- **Order books:** OpenBook v2 YES and NO books per market.
+- **Backend:** Rust, axum and Postgres, with a market-making bot.
+- **Frontend:** React.
+
+Its plan leaves resolution to an admin ("an oracle is out of scope") and lists "markets created from data (Land Registry `pp-*.csv`)" as future work. **Backtrace's role is to be that data layer and the verifiable oracle**: markets defined on frozen view chains, settled from a deterministic evaluation, with hashes anchored on chain.
 
 ## Idea
 Let people forecast values produced by Backtrace views, e.g. *"Will the 2026 average flat price in RG1 be above £237,944, its 2025 value?"* Each market is bound to a **frozen chain** of views and transforms down to the source data. It settles **deterministically** when new source data arrives, and anyone can verify the settlement through **hierarchical hashes**.
@@ -28,11 +36,14 @@ LLM transforms aren't reproducible, so:
 - An agentic step is allowed only if it's **frozen**: its output is captured and hashed when the market is created, like an oracle attestation. A district-locations lookup qualifies; an agent judging whether prices rose does not.
 - The audit view marks frozen agentic inputs clearly.
 
-## Mechanics
-- **Play money or points only.** Real-money prediction markets are regulated (gambling, CFTC, FCA), so that's out of scope.
-- **LMSR automated market maker:** no order book, the price is the implied probability, and it's small to implement.
-- **Storage:** positions and trades on the graph, e.g. `(User)-[:HOLDS]->(Market)`.
-- **Optional:** Brier scores for forecasters after resolution.
+## Mechanics: reuse the on-chain market
+- **Trading, collateral and redemption** come from `prediction-market/`: mUSDC test tokens on a local validator, so effectively play money. Real-money markets stay out of scope (regulation).
+- **Integration points:**
+  - **Create:** Backtrace's "Create market" calls the market backend's `POST /markets` with the question and `resolution_time`. It then stores the returned market id on a Backtrace `Market` node, next to the pinned chain and the formula hash.
+  - **Anchor:** add a `spec_hash: [u8; 32]` (the formula hash plus target and threshold) to the Market account in `initialize_market`, and a `proof_hash` to `resolve_market`. That needs a small change to the Anchor program, to agree with MIDAV0. Once it's in, anyone can check on chain that the market settled on the formula it committed to.
+  - **Resolve:** Backtrace evaluates the pinned chain, then calls `POST /markets/:id/resolve` with the outcome (yes, no or void) and the proof hash. Resolution still goes through the admin key, but its input is the deterministic proof bundle, not a judgement call.
+- **Ports:** both UIs default to 5173, and both stacks use Postgres or Memgraph ports. Remap one stack, or run the market stack under a separate compose project with offset ports.
+- *Fallback if the chain stack isn't available:* an in-graph LMSR market maker with points.
 
 ## Resolution flow
 1. A new source snapshot is ingested, and its file hash is recorded.
@@ -55,14 +66,15 @@ LLM transforms aren't reproducible, so:
 With historical data: ingest 2024 as the "present", create markets on 2025 values, trade, then "publish" `pp-2025.csv`, resolve, and show the proof plus Verify. This needs `pp-2024.csv`, and ideally 2023.
 
 ## Phases
+0. **Run both stacks side by side** (fix the port clash) and agree the integration contract with MIDAV0.
 1. **Hashes:** formula and data hashes computed at evaluation, shown in the UI, plus a `verify` op.
 2. **Pinned evaluation:** `evaluate(view, pinned_versions)` and a check that a chain is deterministic, rejecting or freezing agentic steps.
-3. **Markets:** a Market node, creation from a cell, LMSR trading with points, a probability chart.
-4. **Resolution:** new snapshot → pinned evaluation → settlement → proof bundle and Verify.
+3. **Markets:** a Market node, creation from a cell via the market backend, and the market's live probability shown on the canvas and the market page (read from the order books).
+4. **Resolution:** new snapshot → pinned evaluation → proof bundle → `resolve` through the market backend (with `proof_hash` on chain) → Verify.
 5. **Agent:** drafting markets from plain language and writing resolution reports.
 
 ## Open questions
-1. Play money or points for the demo: confirmed?
+1. Mechanics: build on `prediction-market/` (on-chain, mUSDC). Agree with MIDAV0 on the `spec_hash` and `proof_hash` program change, and on the resolve endpoint accepting a proof.
 2. Source data for the backtest: `pp-2024.csv`, and 2023?
 3. Agentic steps in market chains: freeze them, or forbid them in the first version?
 4. Who creates markets: users from the UI, the agent from plain language, or both?
