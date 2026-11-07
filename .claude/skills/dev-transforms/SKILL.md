@@ -33,6 +33,6 @@ Dry runs on preview rows are deferred to S5.
 **Hashes:** every new instance is sealed by `executor.seal`, which hashes the rows read back from Postgres. If you change what a transform produces or how it's evaluated, bump `hashing.ENGINE`. Keep `verify`'s re-run path (`_compute`) identical to `evaluate`'s.
 
 ## Checking your work
-- After evaluating, `MATCH (r:Record)-[:IN]->(:Instance {id:$i}) RETURN count(r)`, and spot-check one record's `DERIVED_FROM` count in Lab.
+- After evaluating, call `verify(instance_id)`: every check should pass, and `recomputed` should be true for ops steps. Rows live in Postgres (`derived.inst_<id>`), and the `_src` column holds the lineage.
 - An aggregate row's lineage count should equal its `count` metric.
 - Keep error messages short and readable, because the agent sees them, e.g. `"column 'postcode_district' not in input"`.
