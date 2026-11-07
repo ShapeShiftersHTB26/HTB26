@@ -110,7 +110,7 @@ Indexes: `:Record(rid)`, plus `:View(id)`, `:SchemaVersion(id)`, `:Transform(id)
 - If a view has no visual, the UI falls back to a plain table.
 - **Several visuals per view:** each revision tree (a root proposal plus its revisions) is one visual with its own head; `get_view.visual_heads` lists them all.
 - **`uses`:** a visual may also use other views, e.g. a reference view of district locations. Their rows are injected as `window.BACKTRACE.views[<name>] = {view_id, schema, rows, mode}` and the HTML joins them on a key.
-- **Map tiles:** use CARTO basemaps. OSM's own tile servers reject requests from the sandboxed frame (no referrer).
+- **Map tiles:** use Esri's Canvas `World_Light_Gray_Base` tiles (no key needed). OSM's tile servers block this traffic, and CARTO now requires an API key.
 
 ## Transforms
 **Contract:** `run(inputs: dict[view_name, DataFrame], spec) -> DataFrame`. Each input frame has a `_rid` column. The output has the shape's columns plus `_src` (a list of input rids). Transforms never touch the graph.

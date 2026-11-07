@@ -34,7 +34,11 @@ window.backtraceSelect(rid)   // call on click; opens the trace drawer
 3. Join the two in the HTML on the key (`postcode_district`). Both views' real rows carry `_rid`, so clicking still traces.
 4. Leave a `comment` (author `agent`) on the proposal that asked for it, saying where the answer lives.
 
-**Maps:** use Leaflet (`https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js` plus `leaflet.css`) with **CARTO** tiles, `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png`, with the attribution "© OpenStreetMap contributors © CARTO". **Do not use tile.openstreetmap.org**: the sandboxed frame sends no referrer, and OSM blocks that under its tile usage policy. Draw circle markers sized or coloured by the measure. If Leaflet fails to load, fall back to a plain SVG scatter of lon/lat.
+**Maps:** use Leaflet (`https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js` plus `leaflet.css`) with **Esri** tiles, which need no key:
+- base layer: `https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}` (note the `{y}/{x}` order), attribution "Tiles © Esri"
+- optional place labels on top: `.../Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}`
+
+**Do not use** `tile.openstreetmap.org` (blocked under OSM's tile usage policy) or `basemaps.cartocdn.com` (now requires an API key). Draw circle markers or polygons styled by the measure. If Leaflet fails to load, fall back to a plain SVG scatter of lon/lat.
 
 ## 3. Propose and iterate
 - Call `propose_visual(view_id, html, rationale)`. The rationale says why this form suits the question.
