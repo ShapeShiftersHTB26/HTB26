@@ -10,7 +10,8 @@ URI = os.environ.get("MEMGRAPH_URI", "bolt://localhost:7687")
 _driver = None
 
 INDEXES = ["View(id)", "SchemaVersion(id)", "Transform(id)", "Visual(id)",
-           "Comment(id)", "Instance(id)", "Intent(id)", "Counter(name)"]
+           "Comment(id)", "Instance(id)", "Intent(id)", "Counter(name)",
+           "Batch(id)", "Record(rid)"]
 
 
 def driver():

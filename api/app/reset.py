@@ -14,7 +14,7 @@ if __name__ == "__main__":
             pg.drop_raw_for_views(ids)
         except RuntimeError as e:  # PG_DSN not set
             print(f"skipping postgres cleanup: {e}")
-        graph.run("MATCH (r:Record)-[:IN]->(i:Instance) WHERE i.view_id IN $ids DETACH DELETE r", ids=ids)
+        graph.run("MATCH (r:Record) WHERE r._view_id IN $ids DETACH DELETE r", ids=ids)
         graph.run("MATCH (c:Comment)-[:ON]->(n) WHERE n.view_id IN $ids DETACH DELETE c", ids=ids)
         graph.run("MATCH (n) WHERE n.view_id IN $ids DETACH DELETE n", ids=ids)
         graph.run("MATCH (v:View) WHERE v.id IN $ids DETACH DELETE v", ids=ids)

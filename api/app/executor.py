@@ -6,6 +6,7 @@ import jsonschema
 import pandas as pd
 
 from . import graph as g
+from . import graphrecords as GR
 from . import hashing as H
 from . import pg
 from . import proposals as P
@@ -40,6 +41,7 @@ def write_instance(view_id: str, rows: list[dict], srcs: list[list[str]] | None,
                                        "model": model, "storage": storage}.items() if val is not None})
     for src in input_instances:
         g.run("MATCH (i:Instance {id:$i}), (j:Instance {id:$j}) CREATE (i)-[:FROM]->(j)", i=iid, j=src)
+    GR.mirror(iid, view_id, rows, srcs)
     hashes = {}
     if formula:
         hashes = seal(iid, formula, [instance_node(x)["hash"] for x in input_instances])
@@ -193,6 +195,7 @@ def append_batch(view_id: str, path: str | None = None, df=None) -> dict:
           "CREATE (b)-[:RAN]->(t)", v=view_id, t=recipe["id"],
           props={"id": batch_id, "view_id": view_id, "transform_id": recipe["id"], "path": spec["path"],
                  "file_sha256": sha, "row_count": n, "data_root": b_root, "hash": bh, "created_at": g.now()})
+    GR.mirror(batch_id, view_id, rows, label="Batch")
     prev = latest_instance(view_id)
     batches = (json.loads(prev["batches"]) if prev and prev.get("batches") else []) + [batch_id]
     return publish_snapshot(view_id, shape, recipe, batches, table)

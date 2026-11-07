@@ -51,6 +51,9 @@ A rid stays `<instance_or_batch_id>:<n>`, so the lineage format is unchanged.
   - The trace drawer shows each level's hash.
 - **One-offs:** `python -m app.backfill_hashes` (already run).
 
+## Optional graph copy of rows
+With `BACKTRACE_GRAPH_RECORDS=true` (the default), every batch and derived instance is also written to Memgraph the way the first version did it: `(Record)-[:IN]->(Instance|Batch)` and `(Record)-[:DERIVED_FROM]->(Record)`. It's for exploring in Lab and Cypher. Reads and hashes still come from Postgres. `python -m app.mirror_records` copies existing rows across. Turn it off for large datasets.
+
 ## Phases
 1. **Data plane:** Postgres connection, the `raw`, `derived` and `meta` schemas, the append-only trigger, all instance rows and lineage in Postgres, `get_records` and `trace` reading from Postgres, and a migration of the existing Memgraph records.
 2. **Recipes, snapshots and hashes:** a file recipe (`COPY` into `raw`), batches and multi-batch snapshots, Merkle roots, formula and instance hashes, `verify`, and hashes shown in the UI.
