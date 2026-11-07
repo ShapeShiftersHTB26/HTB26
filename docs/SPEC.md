@@ -87,6 +87,11 @@ Indexes: `:Record(rid)`, plus `:View(id)`, `:SchemaVersion(id)`, `:Transform(id)
 - **Membership:** every proposal made while serving an intent carries `intent_id`, and so does every view created under it. Membership is derived from that, never maintained separately.
 - **Inputs** of an intent are its anchors plus the views its transforms read that aren't members.
 - **Ops:** `start_intent`, `get_intent` (the ordered story of steps), `resolve_intent`. `get_graph.intents` gives summaries (members, inputs, steps, `result_current`).
+- **Research threads (chat):** a thread is a root Intent plus its follow-ups (`parent_id`), with `(Message {role, text, kind, datasets?, suggestions?})-[:IN_THREAD]->(Intent)`.
+  - **UI and runner ops (REST only):** `ask` (posts a user message and queues the agent; creates the thread when there's no `intent_id`), `get_thread` (messages, proposals, dataset cards and results in order, plus the stage), `next_turn` and `finish_turn`.
+  - **Agent ops (MCP):** `say` (dataset cards and quick replies), `list_datasets` (curated catalog in `api/app/datasets.json`), `ingest_dataset` (loads a catalog dataset as a source, reusing one with the same filter).
+  - **Runner:** `scripts/runner.py` runs `claude -p --model sonnet` in `agent/`, one turn per queued thread, resuming that thread's session (`Intent.session_id`). Its status is on `Intent.agent_status`: idle, queued, working or error.
+  - The flow is described in [BRIEF-flow.md](BRIEF-flow.md).
 - **`result_current`** follows the result visual's revision tree, so approving a revision updates the outcome automatically.
 - **Mode:** `auto` means the agent approves its own steps and the user inspects the path afterwards. `guided` is step-by-step approval. The default is auto when anchored, guided for a fresh question.
 - **Canvas lenses:**

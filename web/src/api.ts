@@ -47,6 +47,8 @@ export type Intent = {
   result_current?: string;
   result_view_id?: string;
   summary?: string;
+  created_at?: string;
+  agent_status?: "idle" | "queued" | "working" | "error";
 };
 
 export type Proposal = {
@@ -96,3 +98,55 @@ export function columns(schema: any): Column[] {
     description: s.description,
   }));
 }
+
+// ---------------------------------------------------------------- research threads (chat)
+export type Dataset = {
+  id: string;
+  title: string;
+  publisher: string;
+  licence: string;
+  url: string;
+  description: string;
+  coverage: string;
+  updated: string;
+  size: string;
+  available: boolean;
+  files: string[];
+  loaded_as: { view_id: string; name: string; filter?: string }[];
+};
+export type ThreadItem =
+  | {
+      type: "message";
+      at: string;
+      id: string;
+      role: "user" | "agent";
+      text: string;
+      kind: "chat" | "action" | "datasets" | "source";
+      datasets?: string[];
+      suggestions?: string[];
+      view_id?: string;
+      hash?: string;
+    }
+  | { type: "proposal"; at: string; kind: Kind; view_name: string; is_head: boolean; proposal: Proposal }
+  | {
+      type: "result";
+      at: string;
+      intent_id: string;
+      text: string;
+      summary?: string;
+      result_kind?: "view" | "visual";
+      result_current?: string;
+      view_id: string;
+      view_name: string;
+      instance: { id: string; hash?: string; row_count?: number } | null;
+    };
+export type Thread = {
+  intent: { id: string; text: string; status: string; mode: string; agent_status: "idle" | "queued" | "working" | "error"; agent_error?: string; created_at: string };
+  intents: { id: string; text: string; status: string }[];
+  items: ThreadItem[];
+  comments: Record<string, Comment[]>;
+  datasets: Record<string, Dataset>;
+  names: Record<string, string>;
+  view_kinds: Record<string, string>;
+  stage: "ask" | "shape" | "data" | "explore";
+};

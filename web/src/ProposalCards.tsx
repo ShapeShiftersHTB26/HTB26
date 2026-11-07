@@ -36,7 +36,17 @@ export default function ProposalCards(props: {
   );
 }
 
-function Card(props: { p: Proposal; isHead: boolean; comments: Comment[]; body: ReactNode; onChange: () => void }) {
+export type CardAction = "approve" | "discard" | "comment";
+
+// onAction (research thread): called after the decision/comment is stored, e.g. to tell the agent.
+export function Card(props: {
+  p: Proposal;
+  isHead: boolean;
+  comments: Comment[];
+  body: ReactNode;
+  onChange: () => void;
+  onAction?: (a: CardAction, text?: string) => Promise<unknown>;
+}) {
   const { p } = props;
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -73,10 +83,10 @@ function Card(props: { p: Proposal; isHead: boolean; comments: Comment[]; body: 
       <div className="card-actions">
         {p.status === "pending" && (
           <>
-            <button disabled={busy} className="approve" onClick={() => act(() => op("decide", { target_id: p.id, decision: "approve" }))}>
+            <button disabled={busy} className="approve" onClick={() => act(() => op("decide", { target_id: p.id, decision: "approve" }).then(() => props.onAction?.("approve")))}>
               Approve
             </button>
-            <button disabled={busy} onClick={() => act(() => op("decide", { target_id: p.id, decision: "discard" }))}>
+            <button disabled={busy} onClick={() => act(() => op("decide", { target_id: p.id, decision: "discard" }).then(() => props.onAction?.("discard")))}>
               Discard
             </button>
           </>
@@ -86,7 +96,8 @@ function Card(props: { p: Proposal; isHead: boolean; comments: Comment[]; body: 
           className="comment-form"
           onSubmit={(e) => {
             e.preventDefault();
-            if (text.trim()) act(() => op("comment", { target_id: p.id, text: text.trim() }).then(() => setText("")));
+            const t = text.trim();
+            if (t) act(() => op("comment", { target_id: p.id, text: t }).then(() => (setText(""), props.onAction?.("comment", t))));
           }}
         >
           <input value={text} onChange={(e) => setText(e.target.value)} placeholder="comment / request a change…" />

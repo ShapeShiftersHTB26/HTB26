@@ -5,10 +5,20 @@ description: Turn the user's natural-language question (plus any hints about whi
 
 # From a question to an agreed view
 
+## 0. Sharpen the question (fresh research questions)
+Start by breaking a vague question into the parts an answer needs, and state them in your reply in one or two lines:
+- **what** is measured (e.g. flats);
+- **where** (e.g. Reading district);
+- **which measure** (median price? number of sales?);
+- **period and grain** (by year);
+- **comparison** (year on year).
+
+Choose sensible defaults instead of asking. When there's a real choice, offer it as quick replies (`say` with `suggestions`, e.g. ["Median price", "Number of sales"]). Forecast questions ("will it grow next year?") still start from the measurable history: shape the yearly table first, and the future comes later.
+
 ## 1. Understand the question and the data hints
 - `get_graph` lists the existing views. Source views are data you can build on; other approved views can be reused as well.
 - If the user named data ("use the Price Paid sales"), find the matching view. Where records exist, check real values with `get_records(view_id, limit=10)`: codes, spellings, ranges.
-- If nothing obviously fits, still shape the view. Shaping doesn't need data. Mention in one line that a source will be needed later (`ingest-source`).
+- If nothing obviously fits, still shape the view. Shaping doesn't need data. Mention in one line that we'll find the data next (`find-dataset`).
 
 ## 2. Propose the view
 Call `propose_schema` with no `view_id` (this creates the view):

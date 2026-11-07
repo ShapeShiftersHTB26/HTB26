@@ -6,11 +6,13 @@ from fastapi import Body, FastAPI, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from mcp.server.fastmcp import FastMCP
 
-from . import graph, ops, pg  # noqa: F401  (ops import registers operations)
-from .registry import REGISTRY
+from . import graph, ops, pg, thread  # noqa: F401  (imports register operations)
+from .registry import REGISTRY, REST_ONLY
 
 mcp = FastMCP("backtrace", stateless_http=True, streamable_http_path="/")
 for name, fn in REGISTRY.items():
+    if name in REST_ONLY:
+        continue
     mcp.add_tool(fn, name=name, description=(fn.__doc__ or "").strip())
 
 

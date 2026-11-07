@@ -1,0 +1,82 @@
+[
+  {
+    "id": "hmlr-price-paid",
+    "title": "HM Land Registry Price Paid Data",
+    "publisher": "HM Land Registry",
+    "licence": "Open Government Licence v3.0",
+    "url": "https://www.gov.uk/government/statistical-data-sets/price-paid-data-downloads",
+    "description": "Every residential property sale in England and Wales lodged with HM Land Registry: price, date, full address, property type, new build flag and tenure.",
+    "coverage": "England & Wales, 1995 to present",
+    "updated": "monthly",
+    "grain": "one row per property sale",
+    "size": "about 1M rows per year (yearly files)",
+    "keywords": ["house prices", "property", "sales", "transactions", "flats", "housing market", "new builds", "postcode"],
+    "files": ["pp-2026.csv", "pp-2025.csv", "pp-2024.csv", "pp-2023.csv"],
+    "ingest": {
+      "columns": ["transaction_id", "price", "date", "postcode", "property_type", "new_build", "tenure", "paon", "saon",
+                  "street", "locality", "town", "district", "county", "ppd_category", "record_status"],
+      "parse_dates": ["date"]
+    },
+    "notes": "Headerless CSV. district is the local authority in upper case, e.g. 'READING'. property_type: D detached, S semi-detached, T terraced, F flat/maisonette, O other. new_build: Y/N. tenure: F freehold, L leasehold. Filter to one district to keep it small."
+  },
+  {
+    "id": "uk-hpi",
+    "title": "UK House Price Index",
+    "publisher": "HM Land Registry / ONS",
+    "licence": "Open Government Licence v3.0",
+    "url": "https://www.gov.uk/government/collections/uk-house-price-index-reports",
+    "description": "Monthly mix-adjusted house price index and average prices by local authority, with breakdowns by property type and buyer type.",
+    "coverage": "UK, 1995 to present",
+    "updated": "monthly",
+    "grain": "one row per area per month",
+    "size": "about 150k rows",
+    "keywords": ["house price index", "average price", "trend", "property type", "local authority"],
+    "files": [],
+    "notes": "Not downloaded yet."
+  },
+  {
+    "id": "epc-domestic",
+    "title": "Energy Performance Certificates (domestic)",
+    "publisher": "Department for Levelling Up, Housing and Communities",
+    "licence": "Open Government Licence v3.0 (address data has extra conditions)",
+    "url": "https://epc.opendatacommunities.org/",
+    "description": "Energy certificates for homes: floor area, number of habitable rooms, built form, age band and energy rating. Joins to sales by address to answer size or bedroom questions.",
+    "coverage": "England & Wales, 2008 to present",
+    "updated": "quarterly",
+    "grain": "one row per certificate",
+    "size": "about 25M rows (per local authority downloads)",
+    "keywords": ["floor area", "bedrooms", "rooms", "energy rating", "property size"],
+    "files": [],
+    "notes": "Not downloaded yet; needs a free registration."
+  },
+  {
+    "id": "ons-postcode-directory",
+    "title": "ONS Postcode Directory",
+    "publisher": "Office for National Statistics",
+    "licence": "Open Government Licence v3.0 (with Royal Mail and OS conditions)",
+    "url": "https://geoportal.statistics.gov.uk/",
+    "description": "Every UK postcode with its coordinates and the areas it belongs to (local authority, ward, LSOA).",
+    "coverage": "UK, current and terminated postcodes",
+    "updated": "quarterly",
+    "grain": "one row per postcode",
+    "size": "about 2.7M rows",
+    "keywords": ["postcode", "coordinates", "latitude", "longitude", "map", "geography", "ward"],
+    "files": [],
+    "notes": "Not downloaded yet."
+  },
+  {
+    "id": "ons-private-rents",
+    "title": "Price Index of Private Rents",
+    "publisher": "Office for National Statistics",
+    "licence": "Open Government Licence v3.0",
+    "url": "https://www.ons.gov.uk/economy/inflationandpriceindices",
+    "description": "Monthly private rent index and average rents by local authority and property size.",
+    "coverage": "UK, 2015 to present",
+    "updated": "monthly",
+    "grain": "one row per area per month",
+    "size": "about 100k rows",
+    "keywords": ["rent", "rental", "yield", "landlord", "tenants"],
+    "files": [],
+    "notes": "Not downloaded yet."
+  }
+]

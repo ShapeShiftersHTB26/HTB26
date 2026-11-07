@@ -60,5 +60,8 @@ The graph is the **only** state. One service exposes every operation as both **M
 - We assume the data exists, and accept redundancy (reusing views comes later).
 - The demo data is a slice of UK Price Paid. The design doesn't depend on that dataset.
 
+## User flow
+Question first: ask → shape → find and load data → explore → optionally look into the future and open a market. See [docs/BRIEF-flow.md](docs/BRIEF-flow.md).
+
 ## Next stage (draft)
 Prediction markets on verifiable views, with frozen chains, hierarchical hashes and deterministic settlement: see [docs/BRIEF-markets.md](docs/BRIEF-markets.md).

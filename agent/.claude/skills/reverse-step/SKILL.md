@@ -16,6 +16,8 @@ Ask: *can this view be computed directly from an existing view in about 1–4 si
 - **Yes:** propose a transform that `reads` that view, with no `new_inputs`.
 - **No:** propose a transform that reads a **new intermediate view**, and define it in `new_inputs` (`name`, `schema`, `grain`, `scope`, `preview`). The intermediate view should be meaningful to look at, such as "flat sales in Reading with district and year", not a technical half-step.
 
+**When the leaf needs raw data that no source view has** (or the user hasn't picked a dataset yet in a research thread), don't invent a source. Use `find-dataset` to offer one, and continue once a source view exists.
+
 Make sure the transform honours the target's **grain and scope**: the scope usually becomes filters, and the grain usually becomes the aggregate's `by`.
 
 Choose the transform kind:
