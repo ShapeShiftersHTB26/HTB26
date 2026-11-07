@@ -15,7 +15,7 @@ python scripts/seed.py                # ingest the seed data from data/raw/   (f
 ```
 **Research chat (Research tab, the default page):** the api serves research threads itself.
 - **How:** `api/app/worker.py` reuses the web-chat agent from `chat.py`, which runs Claude Agent SDK on `ANTHROPIC_API_KEY`.
-- **Model:** `BACKTRACE_AGENT_MODEL`, default `claude-sonnet-5-5`.
+- **Model:** `BACKTRACE_AGENT_MODEL`, default `claude-haiku-5-5`. Agentic transforms use `BACKTRACE_MODEL`, also `claude-haiku-5-5` by default.
 - **Without an API key:** set `BACKTRACE_THREAD_WORKER=off`, then run `python scripts/runner.py` on the host. It uses your `claude` login instead.
 
 To drive the agent from a terminal instead: `cd agent; claude`. `agent/.mcp.json` configures the `backtrace` MCP server. Check that `/mcp` in Claude Code shows it connected.

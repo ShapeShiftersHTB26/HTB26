@@ -26,8 +26,8 @@ from claude_agent_sdk import (AssistantMessage, ClaudeAgentOptions, ResultMessag
 
 AGENT_DIR = os.environ.get("AGENT_DIR", "/srv/agent")
 MCP_URL = "http://localhost:8000/mcp/"  # this api's own MCP endpoint
-# Web chat + research threads; Sonnet by default: it's billed per turn on the API key.
-MODEL = os.environ.get("BACKTRACE_AGENT_MODEL") or "claude-sonnet-5-5"
+# Web chat + research threads; Haiku by default: it's billed per turn on the API key.
+MODEL = os.environ.get("BACKTRACE_AGENT_MODEL") or "claude-haiku-5-5"
 MAX_TURNS = 80  # HACK: runaway guard; serving a full intent takes roughly 20-40 tool calls
 _RUNS: set[asyncio.Task] = set()
 

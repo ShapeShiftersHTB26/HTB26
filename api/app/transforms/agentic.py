@@ -9,7 +9,7 @@ import os
 import anthropic
 import pandas as pd
 
-MODEL = os.environ.get("BACKTRACE_MODEL", "claude-opus-5-5")
+MODEL = os.environ.get("BACKTRACE_MODEL") or "claude-haiku-5-5"
 CACHE_DIR = "/data/cache"
 _client = None
 
@@ -52,11 +52,12 @@ def _call(prompt: str, payload: list[dict], schema: dict) -> list[dict]:
     if os.path.exists(path):
         with open(path, encoding="utf-8") as f:
             return json.load(f)
+    # server-side fallback on refusal where the model has one (Haiku 5.5 doesn't)
+    fallback = {} if "haiku" in MODEL else {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
     resp = client().beta.messages.create(
         model=MODEL,
         max_tokens=16000,
-        betas=["server-side-fallback-2026-07-01"],
-        fallbacks="default",
+        **fallback,
         output_config={"effort": "medium", "format": {"type": "json_schema", "schema": schema}},
         system=SYSTEM,
         messages=[{"role": "user", "content": f"{prompt}\n\nINPUT ROWS (JSON):\n{body}"}],

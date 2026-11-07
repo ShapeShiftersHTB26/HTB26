@@ -43,7 +43,7 @@ scripts/              reset.py, seed.py, smoke.py
 |---|---|---|---|
 | `memgraph` | `memgraph/memgraph` | 7687 | volume `mg_data:/var/lib/memgraph` |
 | `lab` | `memgraph/lab` | 3000 | `QUICK_CONNECT_MG_HOST=memgraph` |
-| `api` | `./api` | 8000 | uvicorn `--reload`; mounts `./api/app`, `./data:/data` and `./agent:/srv/agent` (read-only, for the web chat); env `MEMGRAPH_URI`, `ANTHROPIC_API_KEY`, `BACKTRACE_MODEL=claude-opus-5-5`, `BACKTRACE_AGENT_MODEL` (web chat; empty = `BACKTRACE_MODEL`) |
+| `api` | `./api` | 8000 | uvicorn `--reload`; mounts `./api/app`, `./data:/data` and `./agent:/srv/agent` (read-only, for the web chat); env `MEMGRAPH_URI`, `ANTHROPIC_API_KEY`, `BACKTRACE_MODEL` (agentic transforms) and `BACKTRACE_AGENT_MODEL` (web chat + research threads), both default `claude-haiku-5-5` |
 | `web` | `./web` | 5173 | Vite dev server; proxies `/api` → `api:8000` |
 
 The app agent is Claude Code on the host, launched in `agent/`. `agent/.mcp.json` points at `http://localhost:8000/mcp/` (streamable HTTP).
@@ -99,7 +99,7 @@ Indexes: `:Record(rid)`, plus `:View(id)`, `:SchemaVersion(id)`, `:Transform(id)
   - **UI and runner ops (REST only):** `ask` (posts a user message and queues the agent; creates the thread when there's no `intent_id`), `get_thread` (messages, proposals, dataset cards and results in order, plus the stage), `next_turn` and `finish_turn`.
   - **Agent ops (MCP):** `say` (dataset cards and quick replies), `list_datasets` (curated catalog in `api/app/datasets.json`), `ingest_dataset` (loads a catalog dataset as a source, reusing one with the same filter).
   - **Worker:** `api/app/worker.py`, inside the api, serves queued threads one turn at a time.
-    - It uses `chat.events`: the same Agent SDK agent as the web chat, on `BACKTRACE_AGENT_MODEL` (default Sonnet).
+    - It uses `chat.events`: the same Agent SDK agent as the web chat, on `BACKTRACE_AGENT_MODEL` (default Haiku).
     - Each thread resumes its own session (`Intent.session_id`).
     - `Intent.agent_status` is idle, queued, working or error; `Intent.agent_activity` is the current tool call.
     - **Fallback:** with `BACKTRACE_THREAD_WORKER=off`, `scripts/runner.py` serves threads with the host `claude` CLI instead.

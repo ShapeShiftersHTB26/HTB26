@@ -5,7 +5,7 @@ then run on the host (needs the `claude` CLI, logged in: uses your Claude login 
     python scripts/runner.py
 Each queued thread gets one `claude -p` turn in agent/ (MCP tools only), resuming that thread's session.
 The agent's proposals land on the graph as it works; its final reply is posted to the thread.
-Env: BACKTRACE_API (default http://localhost:8000), BACKTRACE_CHAT_MODEL (default sonnet: cheaper per turn)."""
+Env: BACKTRACE_API (default http://localhost:8000), BACKTRACE_CHAT_MODEL (default haiku)."""
 import json
 import os
 import shutil
@@ -15,7 +15,7 @@ import time
 import urllib.request
 
 API = os.environ.get("BACKTRACE_API", "http://localhost:8000")
-MODEL = os.environ.get("BACKTRACE_CHAT_MODEL", "sonnet")
+MODEL = os.environ.get("BACKTRACE_CHAT_MODEL", "haiku")
 AGENT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "agent")
 TURN_TIMEOUT_S = 20 * 60
 
