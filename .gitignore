@@ -1,0 +1,9 @@
+data/raw/
+data/cache/
+*.duckdb
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+web/dist/
+.env
