@@ -11,7 +11,7 @@ The layout and the visual contract are in [docs/SPEC.md](../../../docs/SPEC.md) 
 ```
 web/src/api.ts             op(name, args) -> fetch('/api/op/'+name)
 web/src/App.tsx            polling + selected view + layout
-web/src/Canvas.tsx         react-flow: View nodes + READS edges (pending dashed)
+web/src/Canvas.tsx         react-flow + dagre (TB): view, data and visual nodes; transform and uses edges
 web/src/ViewPanel.tsx      tabs: Shape | Visual | Transform | Data
 web/src/ProposalCards.tsx  generic sibling cards + approve/discard/comment; takes a renderBody prop
 web/src/VisualFrame.tsx    sandboxed iframe: injects window.BACKTRACE, listens for postMessage select
@@ -31,5 +31,5 @@ web/src/TraceDrawer.tsx    (S3)
   - Build `srcdoc` by putting the injection script from the spec in front of the agent's HTML, and use `sandbox="allow-scripts"` only.
   - Fix the height (e.g. 360px) to avoid resize plumbing.
   - Listen to `message` events with `type === 'select'`.
-- **Canvas:** a simple left-to-right layering by upstream depth, hand-rolled. Clicking a node selects that view.
+- **Canvas:** a dagre top-to-bottom layout over view, data and visual nodes. Node ids are prefixed `v:` `d:` `x:`, and clicking a node opens the view's panel on the matching tab. Keep the layout automatic; don't hand-position nodes.
 - Styling: one CSS file, large fonts readable on a projector, one accent colour for agent-authored and agentic items. No state library, no router, no component library.

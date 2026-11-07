@@ -6,7 +6,7 @@ import ShapeBody from "./ShapeBody";
 import TransformBody from "./TransformBody";
 import Visual from "./Visual";
 
-type Tab = Kind | "data";
+export type Tab = Kind | "data";
 const TABS: { key: Tab; label: string }[] = [
   { key: "schema", label: "Shape" },
   { key: "visual", label: "Visual" },
@@ -22,9 +22,11 @@ export default function ViewPanel(props: {
   graph: Graph;
   onClose: () => void;
   onSelectRecord: (rid: string) => void;
+  tab: Tab;
+  onTab: (t: Tab) => void;
 }) {
   const [detail, setDetail] = useState<ViewDetail | null>(null);
-  const [tab, setTab] = useState<Tab>("schema");
+  const { tab, onTab: setTab } = props;
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<Rows | null>(null);
 

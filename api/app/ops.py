@@ -26,7 +26,8 @@ def _all_views() -> list[dict]:
     rows = g.run(
         f"MATCH (v:View) OPTIONAL MATCH (p)-[:{P.VIEW_EDGES}]->(v) "
         "RETURN v, collect(CASE WHEN p IS NULL THEN NULL ELSE "
-        "{label: labels(p)[0], id: p.id, status: p.status, counter: p.counter, reads: p.reads} END) AS ps "
+        "{label: labels(p)[0], id: p.id, status: p.status, counter: p.counter, reads: p.reads, kind: p.kind, "
+        "parent_id: p.parent_id, uses: p.uses} END) AS ps "
         "ORDER BY v.created_at")
     out = []
     for r in rows:
@@ -47,26 +48,41 @@ def _edges(views: list[dict]) -> list[dict]:
             for src in (t or {}).get("reads") or []:
                 if (src, v["id"]) not in seen:
                     seen.add((src, v["id"]))
-                    edges.append({"from": src, "to": v["id"], "pending": pending})
+                    edges.append({"from": src, "to": v["id"], "pending": pending, "kind": t.get("kind")})
     return edges
 
 
 @operation
 def get_graph() -> dict:
     """Overview of everything: all views with the ids of their current (head) shape, transform and
-    visual, counts of pending proposals, and the edges between views (input -> output).
+    visual, counts of pending proposals, their latest data instance, their visuals (current + pending, with
+    the views each visual `uses`), and the edges between views (input -> output, with transform kind).
     Call this first to see what exists before acting."""
+    import re
     views = _all_views()
-    latest = {}
+    latest, counts = {}, {}
     for r in g.run("MATCH (i:Instance) RETURN i ORDER BY i.created_at"):
-        latest[r["i"]["view_id"]] = {"id": r["i"]["id"], "row_count": r["i"]["row_count"]}
+        i = r["i"]
+        latest[i["view_id"]] = {"id": i["id"], "row_count": i["row_count"], "created_at": i["created_at"],
+                                "model": i.get("model")}
+        counts[i["view_id"]] = counts.get(i["view_id"], 0) + 1
+    titles = {}
+    for r in g.run("MATCH (p:Visual) RETURN p.id AS id, p.html AS html"):
+        m = re.search(r"<title>(.*?)</title>", r["html"] or "", re.I | re.S)
+        html = (r["html"] or "").lower()
+        titles[r["id"]] = (m.group(1).strip()[:60] if m else
+                           "map" if "leaflet" in html else "chart" if "<svg" in html or "vega" in html else "visual")
     out = []
     for v in views:
         props = v.pop("_proposals")
+        current = P.heads_by_tree(props["visual"])
+        visuals = [{"id": x["id"], "status": x["status"], "uses": x.get("uses") or [], "title": titles.get(x["id"])}
+                   for x in current + [x for x in props["visual"] if x["status"] == "pending"]]
         out.append({**v,
                     "head": {k: (h["id"] if (h := P.head(ps)) else None) for k, ps in props.items()},
                     "pending": {k: sum(p["status"] == "pending" for p in ps) for k, ps in props.items()},
-                    "latest_instance": latest.get(v["id"])})
+                    "latest_instance": latest.get(v["id"]), "instance_count": counts.get(v["id"], 0),
+                    "visuals": visuals})
         v["_proposals"] = props
     return {"views": out, "edges": _edges(views)}
 

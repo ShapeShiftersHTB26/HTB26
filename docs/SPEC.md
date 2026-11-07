@@ -156,9 +156,14 @@ Each operation is a typed function in `ops.py`, registered with `@operation`. It
 | `wait_for_decision` | 5 | `target_ids, timeout_s ≤ 50` | statuses and new comments |
 
 ## Web (one page, polls `get_graph` every 2s)
-- **Canvas** (react-flow):
-  - View nodes carry badges: source, N pending, has visual, evaluated.
-  - Edges are the head transforms' `READS`, with pending ones dashed.
+- **Canvas** (react-flow, laid out top to bottom with dagre): one graph of views, data and visuals.
+  - **View nodes** carry badges: source, draft, N pending, empty.
+  - **View → view edges** are transforms, labelled with their kind (agentic ones in the accent colour). Pending transforms are dashed.
+  - **Data nodes** hang off their view: the latest instance's row count, an "agentic" badge if a model produced it, and "+N older".
+  - **Visual nodes** hang off their view, labelled map or chart (from the HTML), dashed while pending.
+  - **`uses` edges** are dashed and run from a reference view to the visuals that use it.
+  - Clicking a node opens that view's panel on the matching tab.
+  - *TODO:* collapse edges that span many ranks once the graph grows.
 - **Side panel** for the selected view:
   - **Shape tab:** proposal cards, with siblings side by side and the approved chain highlighted. Pending cards have Approve, Discard and Comment buttons. Each card shows columns (with role and unit), grain, scope, a preview table and the rationale.
   - **Visual tab:** the same card layout, with the HTML rendered in a sandboxed iframe over the preview rows or the latest instance.

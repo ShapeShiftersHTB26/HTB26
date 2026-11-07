@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { op, Graph } from "./api";
-import Canvas from "./Canvas";
+import Canvas, { CanvasTarget } from "./Canvas";
 import TraceDrawer from "./TraceDrawer";
-import ViewPanel from "./ViewPanel";
+import ViewPanel, { Tab } from "./ViewPanel";
 
 export default function App() {
   const [graph, setGraph] = useState<Graph>({ views: [], edges: [] });
@@ -10,6 +10,11 @@ export default function App() {
   const [selected, setSelected] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const [traceRid, setTraceRid] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("schema");
+  const select = (t: CanvasTarget) => {
+    setSelected(t.viewId);
+    if (t.tab) setTab(t.tab);
+  };
 
   useEffect(() => {
     let alive = true;
@@ -44,12 +49,13 @@ export default function App() {
         {error && <span className="error">api: {error}</span>}
       </header>
       <main>
-        <Canvas graph={graph} selected={selected} onSelect={setSelected} />
+        <Canvas graph={graph} selected={selected} onSelect={select} />
         {graph.views.length === 0 && (
           <div className="empty">No views yet — ask a question in Claude Code (run from agent/).</div>
         )}
         {selected && (
-          <ViewPanel viewId={selected} tick={tick} graph={graph} onClose={() => setSelected(null)} onSelectRecord={setTraceRid} />
+          <ViewPanel viewId={selected} tick={tick} graph={graph} onClose={() => setSelected(null)} onSelectRecord={setTraceRid}
+                     tab={tab} onTab={setTab} />
         )}
         {traceRid && (
           <TraceDrawer rid={traceRid} names={new Map(graph.views.map((v) => [v.id, v.name]))}

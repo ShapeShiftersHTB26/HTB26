@@ -121,3 +121,14 @@ table.cols td { padding: 2px 8px 2px 0; vertical-align: top; }
 .trace-title { font-weight: 600; margin-bottom: 4px; display: flex; gap: 6px; align-items: center; }
 .trace-title a { color: var(--accent); cursor: pointer; }
 .data-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+/* graph canvas: views, data, visuals */
+.gnode { border-radius: 10px; font-size: 14px; padding: 6px 8px; }
+.gnode.view { background: var(--panel); border: 2px solid var(--accent) !important; }
+.gnode.view.source { border-color: var(--muted) !important; background: var(--bg); }
+.gnode.view.empty { opacity: 0.45; border-style: dashed !important; }
+.gnode.data { background: var(--ok-soft); border: 1px solid var(--ok) !important; color: #135c33; border-radius: 22px; font-size: 13px; }
+.gnode.visual { background: var(--accent-soft); border: 1px solid var(--accent) !important; color: var(--accent); font-size: 13px; }
+.gnode.visual.pending { border-style: dashed !important; background: #fffdf7; }
+.react-flow__edge.edge-attach path { stroke: #c9c9cf; stroke-width: 1.5; }
+.react-flow__edge-text { font-size: 12px; fill: var(--muted); }

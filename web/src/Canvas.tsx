@@ -1,61 +1,154 @@
-import { Background, Controls, Edge, Node, ReactFlow } from "@xyflow/react";
-import { Graph } from "./api";
+import dagre from "@dagrejs/dagre";
+import { Background, Controls, Edge, MarkerType, Node, ReactFlow } from "@xyflow/react";
+import { Graph, View } from "./api";
 
-// Left-to-right layering by upstream depth (sources on the left).
-function layout(graph: Graph): Node[] {
-  const ups = new Map<string, string[]>();
-  graph.edges.forEach((e) => ups.set(e.to, [...(ups.get(e.to) || []), e.from]));
-  const depth = new Map<string, number>();
-  const d = (id: string, seen = new Set<string>()): number => {
-    if (depth.has(id)) return depth.get(id)!;
-    if (seen.has(id)) return 0;
-    seen.add(id);
-    const v = Math.max(-1, ...(ups.get(id) || []).map((u) => d(u, seen))) + 1;
-    depth.set(id, v);
-    return v;
-  };
-  const rows = new Map<number, number>();
-  return graph.views.map((v) => {
-    const col = d(v.id);
-    const row = rows.get(col) || 0;
-    rows.set(col, row + 1);
+export type CanvasTarget = { viewId: string; tab: "schema" | "visual" | "transform" | "data" | null };
+
+const SIZE = { view: [210, 64], data: [150, 44], visual: [150, 44] } as const;
+const COLORS = { muted: "#9a9aa0", accent: "#6a4cff", ok: "#1f9d55" };
+
+// Graph of views (flow via transforms), their data instances and their visuals; laid out top -> bottom.
+// TODO (when the graph grows): collapse edges that span many ranks into stubs / bundles.
+function build(graph: Graph, selected: string | null): { nodes: Node[]; edges: Edge[] } {
+  const nodes: Node[] = [];
+  const edges: Edge[] = [];
+  const byId = new Map(graph.views.map((v) => [v.id, v]));
+
+  graph.views.forEach((v: View) => {
     const pending = v.pending.schema + v.pending.transform + v.pending.visual;
-    return {
-      id: v.id,
-      position: { x: col * 280, y: row * 140 },
+    const empty = !v.head.schema && pending === 0;
+    nodes.push({
+      id: `v:${v.id}`,
+      type: v.kind === "source" ? "input" : "default",
+      selected: v.id === selected,
+      className: `gnode view ${v.kind} ${empty ? "empty" : ""}`,
       data: {
         label: (
           <div>
             <div className="vname">{v.name}</div>
             <div className="vbadges">
               {v.kind === "source" && <span className="vb">source</span>}
-              {!v.head.schema && <span className="vb draft">draft</span>}
-              {v.head.visual && <span className="vb">visual</span>}
-              {v.latest_instance && <span className="vb data">{v.latest_instance.row_count} rows</span>}
+              {!v.head.schema && !empty && <span className="vb draft">draft</span>}
+              {empty && <span className="vb">empty</span>}
               {pending > 0 && <span className="vb pending">{pending} pending</span>}
             </div>
           </div>
         ),
       },
-      className: `vnode ${v.kind}`,
-    };
+      position: { x: 0, y: 0 },
+    });
+
+    if (v.latest_instance) {
+      const older = (v.instance_count || 1) - 1;
+      nodes.push({
+        id: `d:${v.id}`,
+        type: "output",
+        className: "gnode data",
+        data: {
+          label: (
+            <div>
+              <div>▤ {v.latest_instance.row_count.toLocaleString()} rows</div>
+              <div className="vbadges">
+                {v.latest_instance.model && <span className="vb draft">agentic</span>}
+                {older > 0 && <span className="vb">+{older} older</span>}
+              </div>
+            </div>
+          ),
+        },
+        position: { x: 0, y: 0 },
+      });
+      edges.push({ id: `e:v-d:${v.id}`, source: `v:${v.id}`, target: `d:${v.id}`, className: "edge-attach" });
+    }
+
+    (v.visuals || []).forEach((vis) => {
+      nodes.push({
+        id: `x:${vis.id}`,
+        type: "output",
+        className: `gnode visual ${vis.status}`,
+        data: {
+          label: (
+            <div>
+              <div>◧ {vis.title || "visual"}</div>
+              {vis.status === "pending" && <div className="vbadges"><span className="vb pending">pending</span></div>}
+            </div>
+          ),
+        },
+        position: { x: 0, y: 0 },
+      });
+      edges.push({ id: `e:v-x:${vis.id}`, source: `v:${v.id}`, target: `x:${vis.id}`, className: "edge-attach" });
+      vis.uses.forEach((u) => {
+        if (!byId.has(u)) return;
+        edges.push({
+          id: `e:u:${u}-${vis.id}`,
+          source: `v:${u}`,
+          target: `x:${vis.id}`,
+          label: "uses",
+          className: "edge-uses",
+          style: { strokeDasharray: "4 4", stroke: COLORS.accent },
+          markerEnd: { type: MarkerType.ArrowClosed, color: COLORS.accent },
+        });
+      });
+    });
   });
+
+  graph.edges.forEach((e) => {
+    if (!byId.has(e.from) || !byId.has(e.to)) return;
+    edges.push({
+      id: `e:t:${e.from}-${e.to}`,
+      source: `v:${e.from}`,
+      target: `v:${e.to}`,
+      label: e.kind || "",
+      animated: !!e.pending,
+      className: `edge-transform ${e.kind || ""}`,
+      style: {
+        strokeWidth: 2,
+        stroke: e.kind?.startsWith("agent") ? COLORS.accent : "#444",
+        strokeDasharray: e.pending ? "6 4" : undefined,
+      },
+      markerEnd: { type: MarkerType.ArrowClosed },
+    });
+  });
+
+  // dagre layered layout, top -> bottom
+  const g = new dagre.graphlib.Graph();
+  g.setGraph({ rankdir: "TB", nodesep: 36, ranksep: 56, marginx: 20, marginy: 20 });
+  g.setDefaultEdgeLabel(() => ({}));
+  nodes.forEach((n) => {
+    const kind = n.id.startsWith("v:") ? "view" : n.id.startsWith("d:") ? "data" : "visual";
+    const [w, h] = SIZE[kind];
+    g.setNode(n.id, { width: w, height: h });
+  });
+  edges.forEach((e) => g.setEdge(e.source, e.target, { weight: e.className?.includes("transform") ? 3 : 1 }));
+  dagre.layout(g);
+  nodes.forEach((n) => {
+    const p = g.node(n.id);
+    n.position = { x: p.x - p.width / 2, y: p.y - p.height / 2 };
+    n.style = { width: p.width };
+  });
+  return { nodes, edges };
 }
 
-export default function Canvas(props: { graph: Graph; selected: string | null; onSelect: (id: string) => void }) {
-  const nodes = layout(props.graph).map((n) => ({ ...n, selected: n.id === props.selected }));
-  const edges: Edge[] = props.graph.edges.map((e) => ({
-    id: `${e.from}->${e.to}`,
-    source: e.from,
-    target: e.to,
-    animated: !!e.pending,
-    style: e.pending ? { strokeDasharray: "6 4" } : undefined,
-  }));
+export default function Canvas(props: { graph: Graph; selected: string | null; onSelect: (t: CanvasTarget) => void }) {
+  const { nodes, edges } = build(props.graph, props.selected);
   return (
     <div className="canvas">
-      <ReactFlow nodes={nodes} edges={edges} onNodeClick={(_, n) => props.onSelect(n.id)} fitView>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        fitView
+        nodesDraggable={false}
+        onNodeClick={(_, n) => {
+          const [kind, id] = [n.id.slice(0, 1), n.id.slice(2)];
+          if (kind === "v") props.onSelect({ viewId: id, tab: null });
+          if (kind === "d") props.onSelect({ viewId: id, tab: "data" });
+          if (kind === "x") {
+            const owner = props.graph.views.find((v) => v.visuals?.some((x) => x.id === id));
+            if (owner) props.onSelect({ viewId: owner.id, tab: "visual" });
+          }
+        }}
+      >
         <Background />
-        <Controls />
+        <Controls showInteractive={false} />
       </ReactFlow>
     </div>
   );

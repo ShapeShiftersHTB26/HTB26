@@ -22,9 +22,11 @@ export type View = {
   auto_accept?: boolean;
   head: Record<Kind, string | null>;
   pending: Counts;
-  latest_instance?: { id: string; row_count: number } | null;
+  latest_instance?: { id: string; row_count: number; created_at?: string; model?: string } | null;
+  instance_count?: number;
+  visuals?: { id: string; status: string; uses: string[]; title?: string }[];
 };
-export type Graph = { views: View[]; edges: { from: string; to: string; pending?: boolean }[] };
+export type Graph = { views: View[]; edges: { from: string; to: string; pending?: boolean; kind?: string }[] };
 
 export type Proposal = {
   id: string;
