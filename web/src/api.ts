@@ -11,6 +11,48 @@ export async function op<T = any>(name: string, args: Record<string, unknown> = 
   return res.json();
 }
 
+/** Events streamed by POST /api/chat (api/app/chat.py). */
+export type ChatEvent =
+  | { type: "session"; session_id: string }
+  | { type: "text"; text: string }
+  | { type: "tool"; label: string }
+  | { type: "tool_error"; text: string }
+  | { type: "note"; text: string }
+  | { type: "done"; session_id: string; is_error: boolean; turns: number; cost_usd?: number; errors?: string[] | null }
+  | { type: "error"; message: string };
+
+/** Send one chat message to the app agent and call onEvent for each streamed event (SSE over a POST). */
+export async function chat(
+  body: { message: string; session_id?: string | null; view_id?: string | null; intent_id?: string | null },
+  onEvent: (e: ChatEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `chat failed: ${res.status}`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf("\n\n")) >= 0) {
+      const frame = buf.slice(0, i);
+      buf = buf.slice(i + 2);
+      for (const line of frame.split("\n")) if (line.startsWith("data: ")) onEvent(JSON.parse(line.slice(6)));
+    }
+  }
+}
+
 export type Kind = "schema" | "transform" | "visual";
 export type Counts = Record<Kind, number>;
 

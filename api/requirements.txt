@@ -6,3 +6,4 @@ pandas>=2.2
 jsonschema>=4.22
 anthropic>=0.70
 psycopg[binary]>=3.2
+claude-agent-sdk>=0.2.179

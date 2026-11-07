@@ -97,8 +97,8 @@ export default function IntentPanel(props: {
         )}
         {q.status === "open" && q.steps === 0 && (
           <div className="waiting">
-            Waiting for the agent. In the terminal (in <code>agent/</code>) run <code>claude</code> and say
-            <code> pick up open intents</code>.
+            Waiting for the agent. Say <code>pick up open intents</code> in the chat (bottom left), or in Claude
+            Code run from <code>agent/</code>.
           </div>
         )}
         <form

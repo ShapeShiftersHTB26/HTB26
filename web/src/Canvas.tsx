@@ -216,7 +216,7 @@ export default function Canvas(props: {
         }}
       >
         <Background />
-        <Controls showInteractive={false} />
+        <Controls showInteractive={false} position="bottom-right" />
       </ReactFlow>
     </div>
   );

@@ -10,7 +10,7 @@ The graph model and the op table are in [docs/SPEC.md](../../../docs/SPEC.md). S
 ## Adding or changing an op
 1. Write a plain typed function in `api/app/ops.py`. Its docstring becomes the MCP tool description, so say *when* to use the op, not just what it does.
 2. Decorate it with `@operation` from `registry.py`, which only appends the function to a list.
-3. `main.py` loops over the registry and exposes each function as an MCP tool (`FastMCP` from the `mcp` SDK, streamable HTTP, mounted at `/mcp`) and as `POST /api/op/<name>` (body = kwargs). Never write a route or tool by hand.
+3. `main.py` loops over the registry and exposes each function as an MCP tool (`FastMCP` from the `mcp` SDK, streamable HTTP, mounted at `/mcp`, run in the threadpool) and as `POST /api/op/<name>` (body = kwargs). Never write a route or tool by hand. The one exception is `POST /api/chat` (`chat.py`), which runs the app agent for the web chat. It isn't an op.
 4. Return plain JSON-able dicts, and parse the JSON-string props (`schema`, `scope`, `preview`, `spec`, `reads`) before returning them.
 5. Check it: `curl -X POST localhost:8000/api/op/<name> -H 'content-type: application/json' -d '{...}'`, then try it from Claude Code in `agent/`.
 

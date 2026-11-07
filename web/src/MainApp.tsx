@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useState } from "react";
 import { op, Graph } from "./api";
 import Canvas, { CanvasTarget, Lens } from "./Canvas";
+import ChatPanel from "./ChatPanel";
 import IntentPanel from "./IntentPanel";
 import TraceDrawer from "./TraceDrawer";
 import ViewPanel, { Tab } from "./ViewPanel";
@@ -94,8 +95,9 @@ export default function MainApp({ nav, hidden }: { nav: ReactNode; hidden: boole
       <main>
         <Canvas graph={graph} selected={selected} lens={lens} expanded={expanded} onSelect={open} />
         {graph.views.length === 0 && (
-          <div className="empty">No views yet — ask a question in Claude Code (run from agent/).</div>
+          <div className="empty">No views yet — ask a question in the chat (bottom left), or in Claude Code from agent/.</div>
         )}
+        <ChatPanel graph={graph} viewId={selected} intentId={intent} />
         {selected && (
           <ViewPanel viewId={selected} tick={tick} graph={graph} onClose={() => setSelected(null)}
                      onSelectRecord={setTraceRid} tab={tab} onTab={setTab} onOpenVisual={openVisual} />

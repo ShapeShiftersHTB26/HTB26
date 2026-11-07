@@ -171,6 +171,27 @@ table.cols td { padding: 2px 8px 2px 0; vertical-align: top; }
 .trace { z-index: 1000; }
 body.dragging iframe { pointer-events: none; }
 
+/* chat with the app agent (Main tab, bottom left) */
+.chat { position: absolute; left: 12px; bottom: 12px; z-index: 15; width: 400px; max-width: calc(100% - 24px); max-height: 60%;
+        background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,.12);
+        display: flex; flex-direction: column; }
+.chat-head { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 12px; border-bottom: 1px solid var(--line); }
+.chat-head .grow { flex: 1; }
+.chat-head button.small { padding: 2px 8px; }
+.chat-log { flex: 1; min-height: 90px; overflow: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.chat-msg { white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-msg.user { align-self: flex-end; max-width: 85%; background: var(--accent); color: white; padding: 6px 10px; border-radius: 10px 10px 2px 10px; }
+.chat-msg.agent { align-self: flex-start; max-width: 92%; background: var(--bg); padding: 6px 10px; border-radius: 10px 10px 10px 2px; }
+.chat-msg.tool { color: var(--muted); font-size: 12px; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+.chat-msg.error { color: var(--bad); font-size: 13px; }
+.chat-msg.note { color: var(--muted); font-size: 12px; font-style: italic; }
+.chat-ctx { padding: 4px 12px; border-top: 1px solid var(--line); background: var(--bg); }
+.chat-input { display: flex; gap: 8px; align-items: flex-end; padding: 8px 12px; border-top: 1px solid var(--line); }
+.chat-input textarea { flex: 1; font: inherit; font-size: 14px; resize: none; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+.chat-input .send { background: var(--accent); color: white; border-color: var(--accent); }
+.chat-pill { position: absolute; left: 12px; bottom: 12px; z-index: 15; background: var(--accent); color: white; border-color: var(--accent);
+             border-radius: 18px; padding: 6px 14px; box-shadow: 0 4px 16px rgba(0,0,0,.15); }
+
 /* top-level tabs (Main | Predictions) */
 .nav-tabs { display: flex; gap: 2px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
 .nav-tabs a { padding: 4px 14px; border-radius: 6px; color: var(--muted); text-decoration: none; font-weight: 600; }

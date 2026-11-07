@@ -20,12 +20,14 @@ services:
       MEMGRAPH_URI: bolt://memgraph:7687
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       BACKTRACE_MODEL: ${BACKTRACE_MODEL:-claude-opus-5-5}
+      BACKTRACE_AGENT_MODEL: ${BACKTRACE_AGENT_MODEL:-}   # web chat agent; empty = BACKTRACE_MODEL
       PG_DSN: ${PG_DSN:-}
       BACKTRACE_STORE: ${BACKTRACE_STORE:-postgres}   # default row store: postgres | graph
       WATCHFILES_FORCE_POLLING: "true"
     volumes:
       - ./api/app:/srv/app
       - ./data:/data
+      - ./agent:/srv/agent:ro   # the web chat runs the app agent from here (CLAUDE.md + skills)
     depends_on: [memgraph]
 
   web:

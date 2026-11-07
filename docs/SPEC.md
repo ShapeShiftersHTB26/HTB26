@@ -22,7 +22,8 @@ Read [BRIEF.md](../BRIEF.md) first. This file is the build spec.
 ```
 docker-compose.yml
 api/                  Python 3.12, FastAPI + MCP (Dockerfile, requirements.txt)
-  app/main.py         FastAPI app; exposes the ops registry as MCP (/mcp) and REST (/api/op/<name>)
+  app/main.py         FastAPI app; exposes the ops registry as MCP (/mcp) and REST (/api/op/<name>), plus /api/chat
+  app/chat.py         web chat: runs the app agent (Claude Agent SDK, cwd agent/) and streams it as SSE
   app/registry.py     @operation decorator + registry list
   app/ops.py          ALL operations, as plain typed functions (single source of truth)
   app/graph.py        Memgraph driver + Cypher helpers
@@ -42,10 +43,17 @@ scripts/              reset.py, seed.py, smoke.py
 |---|---|---|---|
 | `memgraph` | `memgraph/memgraph` | 7687 | volume `mg_data:/var/lib/memgraph` |
 | `lab` | `memgraph/lab` | 3000 | `QUICK_CONNECT_MG_HOST=memgraph` |
-| `api` | `./api` | 8000 | uvicorn `--reload`; mounts `./api/app` and `./data:/data`; env `MEMGRAPH_URI`, `ANTHROPIC_API_KEY`, `BACKTRACE_MODEL=claude-opus-5-5` |
+| `api` | `./api` | 8000 | uvicorn `--reload`; mounts `./api/app`, `./data:/data` and `./agent:/srv/agent` (read-only, for the web chat); env `MEMGRAPH_URI`, `ANTHROPIC_API_KEY`, `BACKTRACE_MODEL=claude-opus-5-5`, `BACKTRACE_AGENT_MODEL` (web chat; empty = `BACKTRACE_MODEL`) |
 | `web` | `./web` | 5173 | Vite dev server; proxies `/api` → `api:8000` |
 
 The app agent is Claude Code on the host, launched in `agent/`. `agent/.mcp.json` points at `http://localhost:8000/mcp/` (streamable HTTP).
+
+The same agent also runs inside the api for the web chat. `POST /api/chat {message, session_id?, view_id?, intent_id?}` runs it with the Claude Agent SDK:
+- **Setup:** `cwd=/srv/agent`, so it loads `agent/CLAUDE.md` and the app skills; its only tools are `Skill` and the backtrace MCP tools.
+- **Stream:** it sends SSE events (`session`, `text`, `tool`, `tool_error`, `note`, `done`, `error`). Pass `session_id` back to continue a conversation.
+- **Stop:** closing the request (Stop) cancels the run.
+
+MCP tools run in the threadpool, so a slow op doesn't block the event loop.
 
 ## Graph model
 | Node | Key props |
@@ -190,6 +198,12 @@ Each operation is a typed function in `ops.py`, registered with `@operation`. It
   - **Data tab** (stage 3): instance picker, the visual over the real rows (or a table), and an Evaluate button.
 - **Visual windows:** each visual opens in its own floating window: draggable by its header, resizable from the corner, several open at once, clicked to bring to the front. Windows open from a visual node on the canvas, a card's Open button, the Data tab's visual buttons, or an intent's Open result. A window re-renders when its view gets a new instance.
 - **Trace drawer** (stage 3): opened by a `select` postMessage or a click on a table row.
+- **Chat panel** (bottom left, minimisable): talk to the app agent through `/api/chat`.
+  - **Display:** its replies and a one-line label per tool call.
+  - **Context:** the selected view or intent is passed along as context.
+  - **Stop:** the Stop button aborts the run.
+  - **Persistence:** the conversation (session id + messages) is kept in localStorage.
+  - The canvas updates from the graph as usual.
 
 ## Stages (each ends with `docker compose up` and the demo path working so far)
 - [x] **S0 Skeleton:** all four services up. `ping` and `get_graph` work over REST and MCP. Claude Code in `agent/` sees the tools. The web app shows an empty canvas, polling.
