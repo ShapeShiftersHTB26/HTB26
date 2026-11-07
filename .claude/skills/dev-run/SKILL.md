@@ -23,6 +23,7 @@ It uses only the Python standard library (`urllib`) against REST, prints PASS or
 
 ## Troubleshooting
 - **api can't reach Memgraph:** use `bolt://memgraph:7687` inside compose. Memgraph takes a few seconds to start, so the api retries on startup.
+- **MCP "Pending approval":** the first `claude` run in `agent/` asks you to approve the project's `backtrace` server. Accept it once per machine.
 - **MCP not showing in Claude Code:** `curl -i localhost:8000/mcp/` should not 404. Restart `claude` in `agent/`, and check the trailing slash in `.mcp.json`.
 - **The UI isn't updating:** check the network tab for `get_graph` polling, and check that the Vite proxy target is `http://api:8000` inside compose.
 - **Odd graph state:** open Lab (localhost:3000) and run `MATCH (n) RETURN labels(n), count(*)`.

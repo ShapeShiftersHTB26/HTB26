@@ -1,0 +1,39 @@
+services:
+  memgraph:
+    image: memgraph/memgraph:latest
+    ports: ["7687:7687"]
+    volumes: [mg_data:/var/lib/memgraph]
+    command: ["--log-level=WARNING", "--also-log-to-stderr"]
+
+  lab:
+    image: memgraph/lab:latest
+    ports: ["3000:3000"]
+    environment:
+      QUICK_CONNECT_MG_HOST: memgraph
+      QUICK_CONNECT_MG_PORT: "7687"
+    depends_on: [memgraph]
+
+  api:
+    build: ./api
+    ports: ["8000:8000"]
+    environment:
+      MEMGRAPH_URI: bolt://memgraph:7687
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      BACKTRACE_MODEL: ${BACKTRACE_MODEL:-claude-sonnet-5-5}
+      WATCHFILES_FORCE_POLLING: "true"
+    volumes:
+      - ./api/app:/srv/app
+      - ./data:/data
+    depends_on: [memgraph]
+
+  web:
+    build: ./web
+    ports: ["5173:5173"]
+    environment:
+      API_URL: http://api:8000
+    volumes:
+      - ./web/src:/srv/src
+    depends_on: [api]
+
+volumes:
+  mg_data:

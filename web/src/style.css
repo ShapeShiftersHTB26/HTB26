@@ -1,0 +1,26 @@
+:root {
+  --bg: #f7f7f5;
+  --panel: #ffffff;
+  --ink: #1d1d1f;
+  --muted: #6b6b70;
+  --line: #e2e2e0;
+  --accent: #6a4cff; /* agent-authored / agentic */
+  --ok: #1f9d55;
+  --bad: #c0392b;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 16px;
+  color: var(--ink);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); }
+.app { display: flex; flex-direction: column; height: 100vh; }
+header { display: flex; gap: 16px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+header strong { font-size: 20px; }
+.muted { color: var(--muted); }
+.error { color: var(--bad); }
+main { flex: 1; display: flex; min-height: 0; position: relative; }
+.canvas { flex: 1; min-width: 0; }
+.empty { position: absolute; top: 40%; left: 0; right: 0; text-align: center; color: var(--muted); pointer-events: none; }
+.vnode { font-size: 15px; border-radius: 8px; }
+.vnode.source { border: 2px solid var(--muted); }
+.vnode.derived { border: 2px solid var(--accent); }
