@@ -5,3 +5,4 @@ mcp>=1.9,<2
 pandas>=2.2
 jsonschema>=4.22
 anthropic>=0.70
+psycopg[binary]>=3.2

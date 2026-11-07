@@ -56,7 +56,7 @@ The app agent is Claude Code on the host, launched in `agent/`. `agent/.mcp.json
 | `Visual` | `id, view_id, html, rationale, author, parent_id?, status, counter?, decided_by?, created_at` |
 | `Comment` | `id, target_id, text, author, created_at` |
 | `Instance` | `id, view_id, created_at, row_count, invalid_count, model?` |
-| `Record` | `rid` plus the data fields as properties |
+| *(rows)* | **not in Memgraph.** Rows and record lineage live in Postgres (see [BRIEF-data-plane.md](BRIEF-data-plane.md)): `raw.src_<view>` (append-only) and `derived.inst_<id>` with `_rid`, `_n`, `_src text[]`. `Instance.storage` names the table. |
 | `Counter` | `name='global', value` |
 
 Edges:
@@ -65,7 +65,7 @@ Edges:
 (Transform)-[:READS]->(View)            (any proposal)-[:REVISES]->(parent proposal)
 (Comment)-[:ON]->(proposal)
 (Instance)-[:OF]->(View)  (Instance)-[:USED_SCHEMA|USED_TRANSFORM]->(...)  (Instance)-[:FROM]->(Instance)
-(Record)-[:IN]->(Instance)  (Record)-[:DERIVED_FROM]->(Record)
+(record lineage: Postgres `_src` arrays, resolved through meta.tables)
 ```
 **Proposals** are `SchemaVersion`, `Transform` and `Visual`. They share one set of mechanics:
 - **Immutable.** Only `status`, `counter` and `decided_by` are set, and only once, when the proposal is decided.

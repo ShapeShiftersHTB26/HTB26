@@ -1,13 +1,13 @@
-"""Instances and records: evaluating views, writing rows (+ lineage) to the graph, reading them back."""
+"""Instances and records: evaluating views; rows + record lineage live in Postgres (pg.py), instance manifests
+and instance-level lineage in Memgraph."""
 import json
 
 import jsonschema
 import pandas as pd
 
 from . import graph as g
+from . import pg
 from . import proposals as P
-
-BATCH = 1000
 
 
 def to_rows(df: pd.DataFrame) -> list[dict]:
@@ -22,26 +22,22 @@ def to_rows(df: pd.DataFrame) -> list[dict]:
 
 def write_instance(view_id: str, rows: list[dict], srcs: list[list[str]] | None, schema_id: str,
                    transform_id: str, input_instances: list[str], invalid_count: int = 0,
-                   model: str | None = None) -> dict:
+                   model: str | None = None, props: dict | None = None, raw: bool = False) -> dict:
+    """Store rows in Postgres (raw.src_<view> batch for sources, derived.inst_<id> otherwise), then the manifest."""
     iid = g.new_id("i")
+    if props is None:
+        props = P.decode(g.run("MATCH (s:SchemaVersion {id:$s}) RETURN s", s=schema_id)[0]["s"])["schema"]["properties"]
+    table = pg.write_raw(iid, view_id, props, rows) if raw else pg.write_derived(iid, view_id, props, rows, srcs)
+    storage = f"{'raw' if raw else 'derived'}.{table}"
     g.run("MATCH (v:View {id:$v}), (s:SchemaVersion {id:$s}), (t:Transform {id:$t}) "
           "CREATE (i:Instance)-[:OF]->(v) SET i = $props "
           "CREATE (i)-[:USED_SCHEMA]->(s) CREATE (i)-[:USED_TRANSFORM]->(t)",
           v=view_id, s=schema_id, t=transform_id,
           props={k: val for k, val in {"id": iid, "view_id": view_id, "created_at": g.now(),
                                        "row_count": len(rows), "invalid_count": invalid_count,
-                                       "model": model}.items() if val is not None})
+                                       "model": model, "storage": storage}.items() if val is not None})
     for src in input_instances:
         g.run("MATCH (i:Instance {id:$i}), (j:Instance {id:$j}) CREATE (i)-[:FROM]->(j)", i=iid, j=src)
-    for start in range(0, len(rows), BATCH):
-        batch = [{**r, "rid": f"{iid}:{start + n}", "_n": start + n} for n, r in enumerate(rows[start:start + BATCH])]
-        g.run("MATCH (i:Instance {id:$i}) UNWIND $rows AS row CREATE (r:Record)-[:IN]->(i) SET r = row",
-              i=iid, rows=batch)
-    if srcs:
-        pairs = [[f"{iid}:{n}", s] for n, ss in enumerate(srcs) for s in (ss or [])]
-        for start in range(0, len(pairs), BATCH):
-            g.run("UNWIND $pairs AS p MATCH (a:Record {rid:p[0]}), (b:Record {rid:p[1]}) "
-                  "CREATE (a)-[:DERIVED_FROM]->(b)", pairs=pairs[start:start + BATCH])
     return {"instance_id": iid, "row_count": len(rows), "invalid_count": invalid_count}
 
 
@@ -54,13 +50,8 @@ def latest_instance(view_id: str) -> dict | None:
     return xs[0] if xs else None
 
 
-def record_out(r: dict) -> dict:
-    return {"_rid": r["rid"], **{k: v for k, v in r.items() if k not in ("rid", "_n")}}
-
-
 def load_frame(instance_id: str) -> pd.DataFrame:
-    rows = g.run("MATCH (r:Record)-[:IN]->(:Instance {id:$i}) RETURN r ORDER BY r.`_n`", i=instance_id)
-    recs = [record_out(r["r"]) for r in rows]
+    _, recs = pg.read(instance_id)
     return pd.DataFrame(recs) if recs else pd.DataFrame(columns=["_rid"])
 
 
@@ -134,7 +125,7 @@ def evaluate(view_id: str, inputs: dict | None = None, _stack: tuple = ()) -> di
 
 
 def trace(rid: str, sample: int = 20) -> dict:
-    """Walk DERIVED_FROM breadth-first; one level per hop, grouped by instance."""
+    """Walk record lineage (_src in Postgres) breadth-first; one level per hop, grouped by instance."""
     def meta(iid: str) -> dict:
         r = g.run("MATCH (i:Instance {id:$i})-[:OF]->(v:View) OPTIONAL MATCH (i)-[:USED_TRANSFORM]->(t) "
                   "RETURN i, v, t", i=iid)
@@ -145,25 +136,25 @@ def trace(rid: str, sample: int = 20) -> dict:
                 "view_kind": r[0]["v"]["kind"],
                 "transform": {k: t.get(k) for k in ("id", "kind", "spec", "reads", "rationale")}}
 
-    def records(rids: list[str]) -> list[dict]:
-        return [record_out(r["r"]) for r in g.run("MATCH (r:Record) WHERE r.rid IN $ids RETURN r", ids=rids)]
+    def strip(rows):
+        return [{k: v for k, v in x.items() if k != "_src"} for x in rows]
 
-    root = records([rid])
+    root = pg.by_rids([rid])
     if not root:
         raise ValueError(f"no record '{rid}'")
-    levels = [{**meta(rid.split(":")[0]), "count": 1, "sample": root}]
-    frontier = [rid]
+    levels = [{**meta(rid.split(":")[0]), "count": 1, "sample": strip(root)}]
+    frontier = root
     while frontier:
-        nxt = [r["rid"] for r in g.run(
-            "MATCH (a:Record)-[:DERIVED_FROM]->(b:Record) WHERE a.rid IN $ids RETURN DISTINCT b.rid AS rid",
-            ids=frontier)]
+        nxt = sorted({s for row in frontier for s in (row.get("_src") or [])},
+                     key=lambda s: (s.split(":")[0], int(s.split(":")[1])))
         if not nxt:
             break
         by_inst: dict[str, list] = {}
         for x in nxt:
             by_inst.setdefault(x.split(":")[0], []).append(x)
+        frontier = []
         for iid, xs in by_inst.items():
-            xs.sort(key=lambda s: int(s.split(":")[1]))
-            levels.append({**meta(iid), "count": len(xs), "sample": records(xs[:sample])})
-        frontier = nxt
+            rows = pg.by_rids(xs)
+            levels.append({**meta(iid), "count": len(xs), "sample": strip(rows[:sample])})
+            frontier += rows
     return {"rid": rid, "levels": levels}

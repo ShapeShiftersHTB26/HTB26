@@ -20,6 +20,7 @@ services:
       MEMGRAPH_URI: bolt://memgraph:7687
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       BACKTRACE_MODEL: ${BACKTRACE_MODEL:-claude-opus-5-5}
+      PG_DSN: ${PG_DSN:-}
       WATCHFILES_FORCE_POLLING: "true"
     volumes:
       - ./api/app:/srv/app

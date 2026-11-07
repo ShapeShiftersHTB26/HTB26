@@ -6,7 +6,7 @@ from fastapi import Body, FastAPI, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from mcp.server.fastmcp import FastMCP
 
-from . import graph, ops  # noqa: F401  (ops import registers operations)
+from . import graph, ops, pg  # noqa: F401  (ops import registers operations)
 from .registry import REGISTRY
 
 mcp = FastMCP("backtrace", stateless_http=True, streamable_http_path="/")
@@ -18,6 +18,10 @@ for name, fn in REGISTRY.items():
 async def lifespan(_app: FastAPI):
     await run_in_threadpool(graph.wait_until_ready)
     await run_in_threadpool(graph.ensure_indexes)
+    try:
+        await run_in_threadpool(pg.ensure_schema)
+    except Exception as e:  # noqa: BLE001  (api still starts; ping reports postgres down)
+        print(f"postgres not ready: {e}")
     async with mcp.session_manager.run():
         yield
 

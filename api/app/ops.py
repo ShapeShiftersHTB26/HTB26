@@ -6,6 +6,7 @@ import jsonschema
 
 from . import executor as X
 from . import graph as g
+from . import pg as PG
 from . import proposals as P
 from .registry import operation
 from .transforms import ops as OPS
@@ -17,11 +18,14 @@ from .transforms import source as SRC
 @operation
 def ping() -> dict:
     """Health check. Returns ok and whether the graph database is reachable."""
-    try:
-        g.run("RETURN 1 AS one")
-        return {"ok": True, "memgraph": True}
-    except Exception as e:  # noqa: BLE001
-        return {"ok": True, "memgraph": False, "error": str(e)}
+    out = {"ok": True}
+    for name, check in (("memgraph", lambda: g.run("RETURN 1 AS one")), ("postgres", PG.ping)):
+        try:
+            check()
+            out[name] = True
+        except Exception as e:  # noqa: BLE001
+            out[name], out[f"{name}_error"] = False, str(e)[:200]
+    return out
 
 
 def _all_views() -> list[dict]:
@@ -369,7 +373,7 @@ def ingest(path: str, name: str, columns: list[str] | None = None, filter: str |
                                         "rationale": f"Ingest {path}."}, None, "agent")
     P.decide(s["id"], "approve", "auto")
     P.decide(t["id"], "approve", "auto")
-    inst = X.write_instance(view_id, X.to_rows(df), None, s["id"], t["id"], [])
+    inst = X.write_instance(view_id, X.to_rows(df), None, s["id"], t["id"], [], props=schema["properties"], raw=True)
     return {"view_id": view_id, "schema_id": s["id"], "transform_id": t["id"], **inst,
             "schema": schema, "sample": preview}
 
@@ -466,7 +470,6 @@ def get_records(view_id: str | None = None, instance_id: str | None = None, wher
                 limit: int = 50, offset: int = 0) -> dict:
     """Read data rows of a view (its latest instance by default, or a given instance_id).
     `where` is an equality filter, e.g. {"district": "READING"}. Each row has `_rid` (use it for trace)."""
-    import re
     if instance_id is None:
         if view_id is None:
             raise ValueError("pass view_id or instance_id")
@@ -476,17 +479,8 @@ def get_records(view_id: str | None = None, instance_id: str | None = None, wher
         instance_id = inst["id"]
     else:
         inst = g.run("MATCH (i:Instance {id:$i}) RETURN i", i=instance_id)[0]["i"]
-    conds, params = [], {"iid": instance_id, "limit": min(int(limit), 2000), "offset": int(offset)}
-    for n, (k, v) in enumerate((where or {}).items()):
-        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", k):
-            raise ValueError(f"bad column name in where: {k!r}")
-        conds.append(f"r.`{k}` = $w{n}")
-        params[f"w{n}"] = v
-    wh = ("WHERE " + " AND ".join(conds)) if conds else ""
-    base = f"MATCH (r:Record)-[:IN]->(:Instance {{id:$iid}}) {wh}"
-    total = g.run(base + " RETURN count(r) AS n", **params)[0]["n"]
-    rows = g.run(base + " RETURN r ORDER BY r.`_n` SKIP $offset LIMIT $limit", **params)
-    return {"instance": inst, "total": total, "rows": [X.record_out(r["r"]) for r in rows]}
+    total, rows = PG.read(instance_id, where=where, limit=min(int(limit), 2000), offset=int(offset))
+    return {"instance": inst, "total": total, "rows": rows}
 
 
 # ---------------------------------------------------------------- S3

@@ -33,5 +33,10 @@ Write one generic helper set in `graph.py` and use it for all three proposal typ
 - Create indexes on startup, ignoring "already exists" errors.
 - **Frontier:** walk upstream from the view through head transforms' `READS` and collect the derived views (including the starting view) that have no approved transform. Doing this in Python, one hop at a time, is fine.
 - **`get_graph`** should take one or two queries, not N+1: fetch all views, all proposals (without `html` or `preview`, to keep the payload light) and all `READS` edges, then assemble them in Python.
-- **Bulk records** (stage 3): `UNWIND $rows AS row CREATE (r:Record) SET r = row`, then do the `IN` and `DERIVED_FROM` edges in batches of about 1000.
+- **Rows are not in Memgraph.** All rows and record lineage go through `app/pg.py` (Postgres, `PG_DSN`):
+  - `write_raw` for append-only source batches, `write_derived` for instance tables;
+  - `read` and `by_rids` for reading;
+  - `meta.tables` maps a rid prefix to its table.
+
+  Memgraph keeps only the manifests (`Instance.storage`) and the instance-level `FROM` edges.
 - Use Memgraph Lab (localhost:3000) to eyeball the graph after each op. That's the fastest debugging loop. `scripts/reset.py` does `MATCH (n) DETACH DELETE n`.

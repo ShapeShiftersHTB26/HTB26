@@ -23,6 +23,7 @@ It uses only the Python standard library (`urllib`) against REST, prints PASS or
 - **S3:** `evaluate` returns `row_count > 0`; `trace` of the first record ends at the source.
 
 ## Troubleshooting
+- **Postgres:** `ping` reports `postgres: false` with an error if `PG_DSN` (in `.env`) is missing or the cluster is unreachable. A full `scripts/reset.py` also drops the `raw`, `derived` and `meta` schemas.
 - **api can't reach Memgraph:** use `bolt://memgraph:7687` inside compose. Memgraph takes a few seconds to start, so the api retries on startup.
 - **MCP "Pending approval":** the first `claude` run in `agent/` asks you to approve the project's `backtrace` server. Accept it once per machine.
 - **MCP not showing in Claude Code:** `curl -i localhost:8000/mcp/` should not 404. Restart `claude` in `agent/`, and check the trailing slash in `.mcp.json`.
