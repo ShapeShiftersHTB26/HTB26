@@ -3,15 +3,16 @@ import { Graph, op, Proposal, ViewDetail } from "./api";
 import VisualFrame, { ViewData } from "./VisualFrame";
 
 // Data for one view: real rows of its latest instance, else the head (or newest) shape's preview rows.
-export async function loadViewData(viewId: string): Promise<ViewData & { name: string }> {
+export async function loadViewData(viewId: string): Promise<ViewData & { name: string; aliases: string[] }> {
   const d = await op<ViewDetail>("get_view", { view_id: viewId });
   const ss = d.proposals.schema;
   const shape = ss.find((s) => s.id === d.head.schema) || ss[ss.length - 1];
+  const aliases: string[] = (d.view as any).aliases || []; // old names: visuals written before a rename use them
   if (d.latest_instance) {
     const r = await op("get_records", { instance_id: d.latest_instance.id, limit: 2000 });
-    return { view_id: viewId, name: d.view.name, schema: shape?.schema, rows: r.rows, mode: "instance" };
+    return { view_id: viewId, name: d.view.name, aliases, schema: shape?.schema, rows: r.rows, mode: "instance" };
   }
-  return { view_id: viewId, name: d.view.name, schema: shape?.schema, rows: shape?.preview || [], mode: "preview" };
+  return { view_id: viewId, name: d.view.name, aliases, schema: shape?.schema, rows: shape?.preview || [], mode: "preview" };
 }
 
 // A visual proposal rendered over its own view's rows plus the rows of every view it `uses`.
@@ -38,7 +39,7 @@ export default function Visual(props: {
   useEffect(() => {
     if (!uses.length) return setViews({});
     Promise.all(uses.map(loadViewData))
-      .then((ds) => setViews(Object.fromEntries(ds.map(({ name, ...d }) => [name, d]))))
+      .then((ds) => setViews(Object.fromEntries(ds.flatMap(({ name, aliases, ...d }) => [name, ...aliases].map((n) => [n, d])))))
       .catch(() => setViews({}));
   }, [key]);
 

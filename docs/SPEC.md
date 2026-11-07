@@ -231,6 +231,6 @@ Each operation is a typed function in `ops.py`, registered with `@operation`. It
 
 ## Iteration rules
 - No auth, and no tests beyond `scripts/smoke.py` running the demo path so far.
-- `scripts/reset.py` wipes the graph. `scripts/seed.py` ingests the seed data.
+- `scripts/reset.py --all` wipes the graph and the data plane; `scripts/reset.py <prefix>` removes only matching views. `scripts/seed.py` ingests the seed data.
 - Hardcode before you configure, and mark it `# HACK`.
 - Price Paid CSVs have no header. Use these columns: `transaction_id, price, date, postcode, property_type, new_build, tenure, paon, saon, street, locality, town, district, county, ppd_category, record_status`. Flats are `property_type == 'F'`, and Reading is `district == 'READING'`.

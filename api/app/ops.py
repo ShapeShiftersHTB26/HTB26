@@ -191,6 +191,40 @@ def resolve_intent(intent_id: str, result_id: str, summary: str) -> dict:
 
 
 @operation
+def restate_intent(intent_id: str, text: str) -> dict:
+    """Replace an intent's question text when the user changes what they're asking, e.g. they started with
+    Edinburgh, found no data and switched to Coventry: the thread title and the canvas question should say
+    Coventry. The first wording is kept as original_text. Rename the affected tables with rename_view too."""
+    _check_intent(intent_id)
+    text = (text or "").strip()
+    if not text:
+        raise ValueError("empty text")
+    g.run("MATCH (q:Intent {id:$q}) SET q.original_text = coalesce(q.original_text, q.text), q.text = $t, "
+          "q.restated_at = $now", q=intent_id, t=text, now=g.now())
+    return {"id": intent_id, "text": text}
+
+
+@operation
+def rename_view(view_id: str, name: str, question: str | None = None) -> dict:
+    """Rename a view (a table on the canvas) when its name no longer fits, e.g. edinburgh_flat_prices ->
+    coventry_flat_prices after the user switched place. Names are labels only: versions, hashes and lineage are
+    unchanged, and visuals that look the view up by its old name keep working (old names are kept as aliases).
+    name: snake_case, not used by another view. question: optionally replace the question the view answers."""
+    import re
+    if not re.fullmatch(r"[a-z][a-z0-9_]*", name or ""):
+        raise ValueError("name must be snake_case, e.g. coventry_flat_prices_by_year")
+    v = P.view_node(view_id)
+    if g.run("MATCH (x:View {name:$n}) WHERE x.id <> $v RETURN x.id AS id", n=name, v=view_id):
+        raise ValueError(f"another view is already called '{name}'")
+    aliases = list(v.get("aliases") or [])
+    if v["name"] != name and v["name"] not in aliases:
+        aliases.append(v["name"])
+    g.run("MATCH (v:View {id:$v}) SET v.name = $n, v.aliases = $a" + (", v.question = $qn" if question else ""),
+          v=view_id, n=name, a=aliases, qn=question)
+    return {"view_id": view_id, "name": name, "aliases": aliases}
+
+
+@operation
 def get_intent(intent_id: str) -> dict:
     """An Intent with its path under the hood: every step taken to serve it, in order (kind, view, status,
     who decided, rationale), its member views, inputs, result and follow-up intents."""

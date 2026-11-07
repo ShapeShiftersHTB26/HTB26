@@ -10,7 +10,7 @@ description: Run, reset, seed and smoke-test the Backtrace stack (docker compose
 docker compose up --build -d          # memgraph:7687, lab:3000, api:8000, web:5173
                                       # + prediction-market-{db:5433, validator:8899/8900, backend:8080} (Predictions tab)
 docker compose logs -f api            # watch the api while you work
-python scripts/reset.py               # wipe the graph   (talks to the api over REST)
+python scripts/reset.py --all         # wipe graph + Postgres data plane (irreversible); `reset.py <prefix>` removes only <prefix>* views
 python scripts/seed.py                # ingest the seed data from data/raw/   (from S2)
 ```
 **Research chat (Research tab, the default page):** the api serves research threads itself.
@@ -28,7 +28,7 @@ It uses only the Python standard library (`urllib`) against REST, prints PASS or
 - **S3:** `evaluate` returns `row_count > 0`; `trace` of the first record ends at the source.
 
 ## Troubleshooting
-- **Postgres:** `ping` reports `postgres: false` with an error if `PG_DSN` (in `.env`) is missing or the cluster is unreachable. A full `scripts/reset.py` also drops the `raw`, `derived` and `meta` schemas.
+- **Postgres:** `ping` reports `postgres: false` with an error if `PG_DSN` (in `.env`) is missing or the cluster is unreachable. A full `scripts/reset.py --all` also drops the `raw`, `derived` and `meta` schemas.
 - **api can't reach Memgraph:** use `bolt://memgraph:7687` inside compose. Memgraph takes a few seconds to start, so the api retries on startup.
 - **MCP "Pending approval":** the first `claude` run in `agent/` asks you to approve the project's `backtrace` server. Accept it once per machine.
 - **MCP not showing in Claude Code:** `curl -i localhost:8000/mcp/` should not 404. Restart `claude` in `agent/`, and check the trailing slash in `.mcp.json`.

@@ -39,4 +39,4 @@ Write one generic helper set in `graph.py` and use it for all three proposal typ
   - `meta.tables` maps a rid prefix to its table.
 
   Memgraph keeps only the manifests (`Instance.storage`) and the instance-level `FROM` edges.
-- Use Memgraph Lab (localhost:3000) to eyeball the graph after each op. That's the fastest debugging loop. `scripts/reset.py` does `MATCH (n) DETACH DELETE n`.
+- Use Memgraph Lab (localhost:3000) to eyeball the graph after each op. That's the fastest debugging loop. `scripts/reset.py --all` wipes everything; `scripts/reset.py <prefix>` removes only views named `<prefix>*`.

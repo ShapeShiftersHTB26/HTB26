@@ -138,12 +138,16 @@ def next_turn(reset: bool = False) -> dict:
     if not rows:
         return {"intent_id": None}
     q = dict(rows[0]["q"])
+    # each user message is handed to exactly one turn (marked seen), including ones sent while a turn ran
+    new = [_decode_msg(r["m"]) for r in g.run(
+        "MATCH (m:Message {intent_id:$q, role:'user'}) WHERE m.seen IS NULL RETURN m ORDER BY m.created_at", q=q["id"])]
+    if not new:
+        g.run("MATCH (q:Intent {id:$q}) SET q.agent_status = 'idle'", q=q["id"])
+        return {"intent_id": None}
+    g.run("MATCH (m:Message) WHERE m.id IN $ids SET m.seen = true", ids=[m["id"] for m in new])
     started = g.now()
     g.run("MATCH (q:Intent {id:$q}) SET q.agent_status = 'working', q.started_at = $t", q=q["id"], t=started)
-    msgs = [_decode_msg(r["m"]) for r in
-            g.run("MATCH (m:Message {intent_id:$q}) RETURN m ORDER BY m.created_at", q=q["id"])]
-    last_agent = max((i for i, m in enumerate(msgs) if m["role"] == "agent"), default=-1)
-    new = [m for m in msgs[last_agent + 1:] if m["role"] == "user"]
+    last_agent = 0 if g.run("MATCH (m:Message {intent_id:$q, role:'agent'}) RETURN m.id LIMIT 1", q=q["id"]) else -1
     intents = _intents()
     thread = [intents[i] for i in _thread_ids(q["id"], intents)]
     latest = max(thread, key=lambda x: x["created_at"])
@@ -164,8 +168,8 @@ def finish_turn(intent_id: str, reply: str | None = None, session_id: str | None
     if reply and reply.strip():
         _post(intent_id, "agent", reply.strip())
     g.run("MATCH (q:Intent {id:$q}) SET q.agent_activity = null", q=intent_id)
-    newer = started_at and g.run("MATCH (m:Message {intent_id:$q, role:'user'}) WHERE m.created_at > $t "
-                                 "RETURN count(m) AS n", q=intent_id, t=started_at)[0]["n"]
+    newer = g.run("MATCH (m:Message {intent_id:$q, role:'user'}) WHERE m.seen IS NULL RETURN count(m) AS n",
+                  q=intent_id)[0]["n"]
     status = "queued" if newer else ("error" if error else "idle")
     g.run("MATCH (q:Intent {id:$q}) SET q.agent_status = $s, q.agent_error = $e"
           + (", q.session_id = $sid" if session_id else ""), q=intent_id, s=status, e=error, sid=session_id)
