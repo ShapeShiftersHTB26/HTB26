@@ -108,6 +108,9 @@ Indexes: `:Record(rid)`, plus `:View(id)`, `:SchemaVersion(id)`, `:Transform(id)
 - The visual reads `window.BACKTRACE.rows` and renders anything it likes. Calling `backtraceSelect(row._rid)` on click opens the trace drawer. Preview rows have no `_rid`, so the call does nothing there.
 - Libraries come from a CDN (e.g. `cdn.jsdelivr.net/npm/vega-embed@6`), or vanilla SVG and Canvas. *(TODO: vendor them for offline demos.)*
 - If a view has no visual, the UI falls back to a plain table.
+- **Several visuals per view:** each revision tree (a root proposal plus its revisions) is one visual with its own head; `get_view.visual_heads` lists them all.
+- **`uses`:** a visual may also use other views, e.g. a reference view of district locations. Their rows are injected as `window.BACKTRACE.views[<name>] = {view_id, schema, rows, mode}` and the HTML joins them on a key.
+- **Map tiles:** use CARTO basemaps. OSM's own tile servers reject requests from the sandboxed frame (no referrer).
 
 ## Transforms
 **Contract:** `run(inputs: dict[view_name, DataFrame], spec) -> DataFrame`. Each input frame has a `_rid` column. The output has the shape's columns plus `_src` (a list of input rids). Transforms never touch the graph.

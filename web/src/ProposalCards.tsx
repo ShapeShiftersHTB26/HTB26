@@ -15,7 +15,7 @@ function generations(ps: Proposal[]): Proposal[][] {
 
 export default function ProposalCards(props: {
   proposals: Proposal[];
-  headId: string | null;
+  headIds: string[];
   comments: Record<string, Comment[]>;
   renderBody: (p: Proposal) => ReactNode;
   onChange: () => void;
@@ -27,7 +27,7 @@ export default function ProposalCards(props: {
       {generations(props.proposals).map((row, i) => (
         <div className="generation" key={i}>
           {row.map((p) => (
-            <Card key={p.id} p={p} isHead={p.id === props.headId} comments={props.comments[p.id] || []}
+            <Card key={p.id} p={p} isHead={props.headIds.includes(p.id)} comments={props.comments[p.id] || []}
                   body={props.renderBody(p)} onChange={props.onChange} />
           ))}
         </div>

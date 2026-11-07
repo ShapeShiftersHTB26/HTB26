@@ -162,6 +162,7 @@ def get_view(view_id: str) -> dict:
         "view": view,
         "proposals": props,
         "head": {k: (h["id"] if (h := P.head(ps)) else None) for k, ps in props.items()},
+        "visual_heads": [h["id"] for h in P.heads_by_tree(props["visual"])],
         "comments": comments,
         "upstream": [e["from"] for e in edges if e["to"] == view_id and not e["pending"]],
         "downstream": [e["to"] for e in edges if e["from"] == view_id and not e["pending"]],
@@ -173,16 +174,24 @@ def get_view(view_id: str) -> dict:
 # ---------------------------------------------------------------- S2
 
 @operation
-def propose_visual(view_id: str, html: str, rationale: str, parent_id: str | None = None,
-                   author: str = "agent") -> dict:
+def propose_visual(view_id: str, html: str, rationale: str, uses: list[str] | None = None,
+                   parent_id: str | None = None, author: str = "agent") -> dict:
     """Propose a visual for a view: a complete self-contained HTML document. At runtime the page gets
-    window.BACKTRACE = {schema, rows, mode: "preview"|"instance", view: {id, name}} and a function
-    window.backtraceSelect(rid) to call on click (rows from real data carry `_rid`; preview rows don't).
-    Read data ONLY from window.BACKTRACE.rows (never hardcode values). Revise with parent_id."""
+    window.BACKTRACE = {schema, rows, mode: "preview"|"instance", view: {id, name},
+                        views: {<view name>: {view_id, schema, rows, mode}}}
+    and window.backtraceSelect(rid) to call on click (real rows carry `_rid`; preview rows don't).
+    A view can have several visuals: omit parent_id to ADD a new visual (existing ones stay); pass parent_id
+    to revise that visual. `uses` = ids of OTHER views the visual also needs (e.g. a reference view of district locations or
+    boundaries); their rows appear under window.BACKTRACE.views keyed by view name, and the HTML joins them
+    (e.g. on postcode_district). Read data ONLY from window.BACKTRACE (never hardcode values).
+    Revise with parent_id."""
     if "<" not in html:
         raise ValueError("html must be an HTML document")
-    p = P.create("visual", view_id, {"html": html, "rationale": rationale}, parent_id, author)
-    return {"id": p["id"], "view_id": view_id, "status": "pending"}
+    uses = [u for u in (uses or []) if u != view_id]
+    for u in uses:
+        P.view_node(u)
+    p = P.create("visual", view_id, {"html": html, "rationale": rationale, "uses": uses}, parent_id, author)
+    return {"id": p["id"], "view_id": view_id, "uses": uses, "status": "pending"}
 
 
 def _resolve_path(path: str) -> str:

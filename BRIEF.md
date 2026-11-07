@@ -20,7 +20,7 @@ Everything lives on one graph (Memgraph). There's no "final" view, only views co
 - **View:** a *definition*: its shape plus the transform that computes it. A raw dataset is a source view. Definitions are the formula.
 - **Shape (schema version):** JSON Schema for one row plus annotations (role, units, description), along with the **grain** (what one row is) and the **scope** (e.g. "Reading, flats, 2020–2024"). Each proposal includes preview rows, so a view can be seen before any data exists. Schemas validate data, act as structured input and output for the agent, and drive the UI.
 - **Transform:** a versioned node connecting one or more input views to one output view: `(View)-[:COMPUTED_BY]->(Transform)-[:READS]->(View…)`.
-- **Visual:** a versioned HTML snippet that renders one view, from preview rows or from a real instance.
+- **Visual:** a versioned HTML snippet that renders a view, from preview rows or from a real instance. It can also **use other views**, e.g. a reference view of district locations, which it joins in the browser. A view can have several visuals.
 - **Instance:** one *evaluation* of a view. It pins the exact shape and transform versions and the input instances it used. One definition can have many instances. Instances are the observation.
 - **Record:** a datapoint in an instance, linked to the source records it came from.
 

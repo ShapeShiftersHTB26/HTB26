@@ -44,6 +44,7 @@ export type ViewDetail = {
   view: Omit<View, "head" | "pending" | "latest_instance">;
   proposals: Record<Kind, Proposal[]>;
   head: Record<Kind, string | null>;
+  visual_heads: string[];
   comments: Record<string, Comment[]>;
   upstream: string[];
   downstream: string[];

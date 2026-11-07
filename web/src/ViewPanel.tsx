@@ -4,7 +4,7 @@ import ProposalCards from "./ProposalCards";
 import RowsTable from "./RowsTable";
 import ShapeBody from "./ShapeBody";
 import TransformBody from "./TransformBody";
-import VisualFrame from "./VisualFrame";
+import Visual from "./Visual";
 
 type Tab = Kind | "data";
 const TABS: { key: Tab; label: string }[] = [
@@ -90,12 +90,12 @@ export default function ViewPanel(props: {
       </nav>
       <div className="tab-body">
         {tab === "data" ? (
-          <DataTab data={data} cols={cols} visual={detail.proposals.visual.find((p) => p.id === detail.head.visual)}
-                   shape={shape} view={v} onSelect={props.onSelectRecord} />
+          <DataTab data={data} cols={cols} visuals={detail.proposals.visual.filter((p) => detail.visual_heads.includes(p.id))}
+                   shape={shape} view={v} graph={props.graph} onSelect={props.onSelectRecord} />
         ) : (
           <ProposalCards
             proposals={detail.proposals[tab]}
-            headId={detail.head[tab]}
+            headIds={tab === "visual" ? detail.visual_heads : [detail.head[tab]].filter(Boolean) as string[]}
             comments={detail.comments}
             onChange={load}
             empty={`No ${TABS.find((t) => t.key === tab)!.label.toLowerCase()} proposals yet.`}
@@ -105,8 +105,8 @@ export default function ViewPanel(props: {
               ) : tab === "transform" ? (
                 <TransformBody p={p} names={names} />
               ) : (
-                <VisualFrame html={p.html} schema={shape?.schema} rows={data?.rows || []} mode={data?.mode || "preview"}
-                             view={{ id: v.id, name: v.name }} onSelect={props.onSelectRecord} />
+                <Visual p={p} schema={shape?.schema} rows={data?.rows || []} mode={data?.mode || "preview"}
+                        view={{ id: v.id, name: v.name }} graph={props.graph} onSelect={props.onSelectRecord} />
               )
             }
           />
@@ -119,9 +119,10 @@ export default function ViewPanel(props: {
 function DataTab(props: {
   data: Rows | null;
   cols: ReturnType<typeof columns>;
-  visual?: Proposal;
+  visuals: Proposal[];
   shape?: Proposal;
   view: { id: string; name: string };
+  graph: Graph;
   onSelect: (rid: string) => void;
 }) {
   const { data } = props;
@@ -159,10 +160,10 @@ function DataTab(props: {
   return (
     <div className="data">
       {bar}
-      {props.visual && (
-        <VisualFrame html={props.visual.html} schema={props.shape?.schema} rows={data.rows} mode="instance"
-                     view={props.view} onSelect={props.onSelect} />
-      )}
+      {props.visuals.map((vis) => (
+        <Visual key={vis.id} p={vis} schema={props.shape?.schema} rows={data.rows} mode="instance"
+                view={props.view} graph={props.graph} onSelect={props.onSelect} />
+      ))}
       <RowsTable cols={props.cols} rows={data.rows} onSelect={props.onSelect} />
     </div>
   );

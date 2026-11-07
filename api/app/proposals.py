@@ -11,7 +11,7 @@ KINDS = {
     "visual": ("Visual", "RENDERS", "vis"),
 }
 LABEL_TO_KIND = {label: kind for kind, (label, _, _) in KINDS.items()}
-JSON_FIELDS = {"schema", "scope", "preview", "spec", "reads", "warnings"}
+JSON_FIELDS = {"schema", "scope", "preview", "spec", "reads", "warnings", "uses"}
 VIEW_EDGES = "|".join(rel for _, rel, _ in KINDS.values())
 
 
@@ -85,6 +85,22 @@ def decide(target_id: str, decision: str, by: str) -> dict:
 
     counter, bundled = g.write_tx(tx)
     return {"id": target_id, "status": "approved", "counter": counter, "also_approved": bundled}
+
+
+def heads_by_tree(proposals: list[dict]) -> list[dict]:
+    """One current version per revision tree (root = proposal without parent). Used for visuals: a view can
+    have several visuals; revising one (parent_id) only replaces it within its own tree."""
+    by_id = {p["id"]: p for p in proposals}
+
+    def root(p):
+        while p.get("parent_id") and p["parent_id"] in by_id:
+            p = by_id[p["parent_id"]]
+        return p["id"]
+    trees: dict[str, list] = {}
+    for p in proposals:
+        trees.setdefault(root(p), []).append(p)
+    hs = [h for ps in trees.values() if (h := head(ps))]
+    return sorted(hs, key=lambda p: p["counter"])
 
 
 def head(proposals: list[dict]) -> dict | None:

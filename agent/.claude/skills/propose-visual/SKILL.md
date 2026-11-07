@@ -26,12 +26,15 @@ window.backtraceSelect(rid)   // call on click; opens the trace drawer
 - Design for a 360px-tall frame: large readable text, one accent colour, and a legible light background.
 - If `mode === "preview"`, show a small "preview" badge.
 
-**Missing columns (e.g. a map needs coordinates):** never hardcode data such as coordinates in the HTML. Instead:
-1. Derive a downstream view that adds the missing fields (`derive-downstream`, usually an `agent_map` transform, e.g. inferring `lat`/`lon` per postcode district).
-2. Propose the visual on that new view.
-3. Leave a `comment` (author `agent`) on the proposal that asked for it, saying where the answer lives.
+**Several visuals per view:** omit `parent_id` to **add** another visual (existing ones stay); pass `parent_id` only to revise that particular visual.
 
-For maps, use Leaflet (`https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js` plus `leaflet.css`) with OpenStreetMap tiles and circle markers sized or coloured by the measure. A plain SVG scatter of lon/lat also works offline.
+**Visuals that use several views (`uses`):** if a visual needs data the view doesn't have, such as coordinates or boundaries for a map, never hardcode it in the HTML and don't widen the view. Instead:
+1. Create or reuse a **reference view** keyed by the join column, e.g. `district_locations [postcode_district, lat, lon]` (see `derive-downstream`, `agent_map`).
+2. Propose the visual on the main view with `uses: [reference_view_id]`. Its rows arrive as `window.BACKTRACE.views["district_locations"].rows`.
+3. Join the two in the HTML on the key (`postcode_district`). Both views' real rows carry `_rid`, so clicking still traces.
+4. Leave a `comment` (author `agent`) on the proposal that asked for it, saying where the answer lives.
+
+**Maps:** use Leaflet (`https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js` plus `leaflet.css`) with **CARTO** tiles, `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png`, with the attribution "© OpenStreetMap contributors © CARTO". **Do not use tile.openstreetmap.org**: the sandboxed frame sends no referrer, and OSM blocks that under its tile usage policy. Draw circle markers sized or coloured by the measure. If Leaflet fails to load, fall back to a plain SVG scatter of lon/lat.
 
 ## 3. Propose and iterate
 - Call `propose_visual(view_id, html, rationale)`. The rationale says why this form suits the question.

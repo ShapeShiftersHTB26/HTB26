@@ -111,6 +111,14 @@ def stage2():
         return "50 records"
     check("S2 ingest + get_records", ingest)
 
+    def multi_visual():
+        r = op("propose_visual", view_id=ctx["view"], html="<html><head></head><body>2</body></html>",
+               rationale="second visual using another view", uses=[ctx["src"]])
+        op("decide", target_id=r["id"], decision="approve")
+        heads = op("get_view", view_id=ctx["view"])["visual_heads"]
+        assert len(heads) == 2, heads
+    check("S2 second visual with uses (both current)", multi_visual)
+
     def transform():
         spec = {"ops": [{"op": "derive", "column": "k", "expr": "postcode.str.split(' ').str[0]"},
                         {"op": "aggregate", "by": ["k"], "metrics": {"x": ["price", "mean"]}}]}
