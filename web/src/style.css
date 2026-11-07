@@ -151,3 +151,8 @@ table.cols td { padding: 2px 8px 2px 0; vertical-align: top; }
 .story li a { cursor: pointer; }
 .story li.pending b { color: var(--warn); }
 .react-flow__edge.edge-group path { stroke-width: 1.5; }
+
+.ask { display: flex; gap: 8px; margin: 4px 0 14px; }
+.ask input { flex: 1; font-size: 15px; padding: 6px 10px; }
+.waiting { background: var(--warn-soft); color: var(--warn); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
+.waiting code { background: rgba(255,255,255,.6); padding: 0 4px; border-radius: 4px; }

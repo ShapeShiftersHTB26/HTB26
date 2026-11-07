@@ -28,6 +28,9 @@ export default function IntentPanel(props: {
 }) {
   const [d, setD] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [ask, setAsk] = useState("");
+  const [asking, setAsking] = useState(false);
+  const [askErr, setAskErr] = useState<string | null>(null);
   useEffect(() => {
     op("get_intent", { intent_id: props.intentId }).then(setD).catch((e) => setErr(e.message));
   }, [props.intentId, props.tick]);
@@ -38,6 +41,22 @@ export default function IntentPanel(props: {
   const name = (id: string) => d.names[id] || id;
   const steps: Step[] = d.steps.filter((s: Step) => s.status !== "discarded");
   const discarded = d.steps.length - steps.length;
+  const submitAsk = async () => {
+    if (!ask.trim()) return;
+    setAsking(true);
+    setAskErr(null);
+    try {
+      // follow-up anchored on the view holding this intent's result (else on this intent's own anchors)
+      const anchors = q.result_view_id ? [q.result_view_id] : q.anchors;
+      const r = await op("start_intent", { text: ask.trim(), anchors, parent_id: q.id, author: "user" });
+      setAsk("");
+      props.onOpen({ type: "intent", intentId: r.id });
+    } catch (e: any) {
+      setAskErr(e.message);
+    } finally {
+      setAsking(false);
+    }
+  };
 
   return (
     <aside className="panel">
@@ -67,7 +86,26 @@ export default function IntentPanel(props: {
           )}
           <button onClick={props.onToggleExpand}>{props.expanded ? "Collapse path on canvas" : "Lift the hood (expand path)"}</button>
         </div>
+        {q.status === "open" && q.steps === 0 && (
+          <div className="waiting">
+            Waiting for the agent. In the terminal (in <code>agent/</code>) run <code>claude</code> and say
+            <code> pick up open intents</code>.
+          </div>
+        )}
+        <form
+          className="ask"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submitAsk();
+          }}
+        >
+          <input value={ask} onChange={(e) => setAsk(e.target.value)} disabled={asking}
+                 placeholder="Ask a follow-up… e.g. “now only flats”" />
+          <button className="approve" disabled={asking || !ask.trim()}>Ask</button>
+        </form>
+        {askErr && <div className="error small">{askErr}</div>}
         <h3>How it got here</h3>
+        {steps.length === 0 && <div className="muted small">No steps yet.</div>}
         <ol className="story">
           {steps.map((s) => (
             <li key={s.id} className={s.status}>

@@ -8,6 +8,7 @@ description: Entry point for EVERY user request — record it as an Intent (anch
 An Intent is the user's request plus the path built to answer it. The canvas shows the request and its outcome, and folds the path underneath. Getting the Intent right is what lets the user see the answer first and "lift the hood" later.
 
 ## 1. Start or continue
+- **"Pick up open intents"** (or "continue", "check the UI"): the user typed requests in the UI. Each one is an `open` intent in `get_graph.intents` with `steps: 0` and `author: user`; `get_intent` shows its parent and anchors. Serve them one at a time, oldest first, **using their existing `intent_id`** (don't call `start_intent` again). Their anchors are already set, usually the parent intent's result view, and the parent's result and summary give you the context ("now only flats" means: the parent's analysis, restricted to flats).
 - Call `get_graph` and check `intents`. If the user is continuing an **open** intent (answering your question, giving feedback), keep using that `intent_id`.
 - Otherwise call `start_intent`:
   - `text`: the request, word for word.
