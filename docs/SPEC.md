@@ -171,7 +171,7 @@ Each operation is a typed function in `ops.py`, registered with `@operation`. It
   - **upstream:** `ingest` and `propose_transform` (stored, not run), `get_frontier`, dashed and solid edges
   - **downstream:** a new view whose transform reads an existing one
   - Skills: `propose-visual`, `reverse-step`, `derive-downstream`
-- [ ] **S3 Evaluate:** ops executor, records with lineage, the Data tab with visuals over real rows, `trace` and the drawer. **This is the minimum demo.**
+- [x] **S3 Evaluate:** ops executor, records with lineage, the Data tab with visuals over real rows, `trace` and the drawer. **This is the minimum demo.**
 - [ ] **S4 Agentic + join:** `agent_map` and `agent_reduce` with caching; the `join` op.
 - [ ] **S5 Polish:** dry run on preview rows, auto-accept, `wait_for_decision`, stale flags, demo rehearsal and a graph snapshot.
 

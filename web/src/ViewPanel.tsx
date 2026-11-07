@@ -125,14 +125,40 @@ function DataTab(props: {
   onSelect: (rid: string) => void;
 }) {
   const { data } = props;
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const evaluate = () => {
+    setBusy(true);
+    setErr(null);
+    op("evaluate", { view_id: props.view.id })
+      .catch((e) => setErr(e.message))
+      .finally(() => setBusy(false));
+  };
   if (!data) return <div className="muted">loading…</div>;
+  const bar = (
+    <div className="data-bar">
+      <button className="approve" disabled={busy} onClick={evaluate}>
+        {busy ? "evaluating…" : data.mode === "preview" ? "Evaluate" : "Re-evaluate"}
+      </button>
+      {data.mode === "instance" && (
+        <span className="muted small">
+          instance <code>{data.instance?.id}</code> · {data.total.toLocaleString()} rows · {data.instance?.created_at}
+          {data.instance?.invalid_count ? ` · ${data.instance.invalid_count} invalid dropped` : ""}
+        </span>
+      )}
+      {err && <span className="error small">{err}</span>}
+    </div>
+  );
   if (data.mode === "preview")
-    return <div className="muted pad">Not evaluated yet — the Visual and Shape tabs show preview rows.</div>;
+    return (
+      <div className="data">
+        {bar}
+        <div className="muted">Not evaluated yet — the Visual and Shape tabs show preview rows.</div>
+      </div>
+    );
   return (
     <div className="data">
-      <div className="muted small">
-        instance <code>{data.instance?.id}</code> · {data.total.toLocaleString()} rows · {data.instance?.created_at}
-      </div>
+      {bar}
       {props.visual && (
         <VisualFrame html={props.visual.html} schema={props.shape?.schema} rows={data.rows} mode="instance"
                      view={props.view} onSelect={props.onSelect} />

@@ -218,7 +218,7 @@ def ingest(path: str, name: str, columns: list[str] | None = None, filter: str |
                                         "rationale": f"Ingest {path}."}, None, "agent")
     P.decide(s["id"], "approve", "auto")
     P.decide(t["id"], "approve", "auto")
-    inst = X.write_instance(view_id, df, s["id"], t["id"], [])
+    inst = X.write_instance(view_id, X.to_rows(df), None, s["id"], t["id"], [])
     return {"view_id": view_id, "schema_id": s["id"], "transform_id": t["id"], **inst,
             "schema": schema, "sample": preview}
 
@@ -333,3 +333,23 @@ def get_records(view_id: str | None = None, instance_id: str | None = None, wher
     total = g.run(base + " RETURN count(r) AS n", **params)[0]["n"]
     rows = g.run(base + " RETURN r ORDER BY r.`_n` SKIP $offset LIMIT $limit", **params)
     return {"instance": inst, "total": total, "rows": [X.record_out(r["r"]) for r in rows]}
+
+
+# ---------------------------------------------------------------- S3
+
+@operation
+def evaluate(view_id: str, inputs: dict | None = None) -> dict:
+    """Run a view's current (head) transform over its inputs and store the result as a new instance
+    (an observation) with record-level lineage. Each input defaults to the LATEST instance of that upstream
+    view; upstream views with no data are evaluated first. Pass inputs={view_id: instance_id} to pin a
+    specific earlier observation. Fails with a readable error if the chain is unresolved or a transform
+    breaks — fix by proposing a sibling transform."""
+    return X.evaluate(view_id, inputs)
+
+
+@operation
+def trace(rid: str) -> dict:
+    """Explain where a record came from: walks lineage from the record (`_rid` from get_records) back to the
+    source rows. Returns levels from the record itself down to the raw data; each level has the view, the
+    transform that produced it, how many records contributed, and a sample of them."""
+    return X.trace(rid)

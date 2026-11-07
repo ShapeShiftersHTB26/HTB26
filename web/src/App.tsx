@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { op, Graph } from "./api";
 import Canvas from "./Canvas";
+import TraceDrawer from "./TraceDrawer";
 import ViewPanel from "./ViewPanel";
 
 export default function App() {
@@ -51,9 +52,8 @@ export default function App() {
           <ViewPanel viewId={selected} tick={tick} graph={graph} onClose={() => setSelected(null)} onSelectRecord={setTraceRid} />
         )}
         {traceRid && (
-          <div className="toast" onClick={() => setTraceRid(null)}>
-            selected record <code>{traceRid}</code> — trace drawer arrives in S3
-          </div>
+          <TraceDrawer rid={traceRid} names={new Map(graph.views.map((v) => [v.id, v.name]))}
+                       onClose={() => setTraceRid(null)} onSelect={setTraceRid} onOpenView={setSelected} />
         )}
       </main>
     </div>

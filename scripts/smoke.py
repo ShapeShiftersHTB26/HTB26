@@ -137,7 +137,25 @@ def stage2():
     check("S2 new_inputs bundle approval + frontier", new_inputs)
 
 
-STAGES = [stage0, stage1, stage2]
+def stage3():
+    ctx = CTX
+
+    def evaluate():
+        r = op("evaluate", view_id=ctx["view"])
+        assert r["row_count"] > 0, r
+        ctx["row"] = op("get_records", view_id=ctx["view"], limit=1)["rows"][0]
+        return f"{r['row_count']} rows"
+    check("S3 evaluate", evaluate)
+
+    def trace():
+        t = op("trace", rid=ctx["row"]["_rid"])
+        last = t["levels"][-1]
+        assert last["view_kind"] == "source" and last["count"] > 0, last
+        return " <- ".join(f"{L['view_name']}({L['count']})" for L in t["levels"])
+    check("S3 trace to source", trace)
+
+
+STAGES = [stage0, stage1, stage2, stage3]
 
 if __name__ == "__main__":
     import subprocess
