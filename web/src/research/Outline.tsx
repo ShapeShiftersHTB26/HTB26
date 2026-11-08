@@ -42,7 +42,7 @@ export default function Outline() {
         <div className="ol-list">
           {c.questions.map((q, i) => (
             <a key={q.id} className={`ol-q ${activeQ === q.id ? "active" : ""}`}
-               onClick={() => (setActiveQ(activeQ === q.id ? null : q.id), q.result_view_id && setFocus(q.result_view_id))}>
+               onClick={() => (setActiveQ(activeQ === q.id ? null : q.id), setFocus(`q:${q.id}`))}>
               <span className="qdot" style={{ background: QCOLORS[i % QCOLORS.length] }} />
               <span className="ol-text">
                 {q.text}

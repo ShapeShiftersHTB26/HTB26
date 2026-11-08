@@ -99,7 +99,7 @@ export default function ChatWindow() {
 }
 
 function Line({ it }: { it: ThreadItem }) {
-  const { send, setFocus } = useThread();
+  const { send, setFocus, setActiveQ } = useThread();
   if (it.type === "proposal") {
     const p = it.proposal;
     const what = it.kind === "schema" && p.parent_id ? "a change" : LABEL[it.kind];
@@ -112,7 +112,7 @@ function Line({ it }: { it: ThreadItem }) {
   }
   if (it.type === "result")
     return (
-      <a className="chat-link answer" onClick={() => setFocus(it.view_id)}>
+      <a className="chat-link answer" onClick={() => (setActiveQ(it.intent_id), setFocus(`q:${it.intent_id}`))}>
         Answer: {it.summary || it.view_name} →
       </a>
     );
