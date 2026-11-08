@@ -101,6 +101,8 @@ cd ../web && ADMIN_API_KEY=... npm run pm:e2e              # 70s market: trade b
 
 ## Production (hosted Postgres + devnet)
 
+For a step-by-step server deploy (Vultr VPS, HTTPS, firewall), see [docs/DEPLOY.md](../docs/DEPLOY.md).
+
 `docker-compose.prod.yml` at the repo root is an override. It skips `prediction-market-db` and `prediction-market-validator`, and points the backend at your hosted Postgres and a devnet RPC. Every other service runs as in `docker-compose.yml`. Needs Docker Compose ≥ 2.24.4 (for `!reset` / `!override`).
 
 One-time devnet setup (Solana CLI + Anchor on your machine; keys land in `prediction-market/keys/`):

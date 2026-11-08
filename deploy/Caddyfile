@@ -1,0 +1,30 @@
+# Public entry point on the VPS (docker-compose.vps.yml, docs/DEPLOY.md).
+# Caddy gets and renews the HTTPS certificate for {$DOMAIN} itself: the domain's DNS A record must point at the
+# server and ports 80 + 443 must be open. After editing this file: docker compose restart web
+{$DOMAIN} {
+	# Optional password for the whole site. The app has no login, so anyone with the URL can drive the agent
+	# (your Anthropic bill) and create markets (paid by the admin wallet). To turn it on, make a hash with
+	#   docker compose exec web caddy hash-password
+	# then uncomment and paste it (user name is yours to pick):
+	# basic_auth {
+	# 	demo <paste-hash-here>
+	# }
+
+	# api: research threads, ops, the chat stream (SSE). Keeps the /api prefix, like the Vite dev proxy.
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+
+	# prediction-market backend. Strips /pm-api, like the Vite dev proxy.
+	handle_path /pm-api/* {
+		reverse_proxy prediction-market-backend:8080
+	}
+
+	# the built React app (hash routes, so every path falls back to index.html)
+	handle {
+		root * /srv
+		encode zstd gzip
+		try_files {path} /index.html
+		file_server
+	}
+}

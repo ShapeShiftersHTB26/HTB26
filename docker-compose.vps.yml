@@ -1,0 +1,44 @@
+# VPS override, layered on docker-compose.yml + docker-compose.prod.yml (guide: docs/DEPLOY.md).
+# Only Caddy (the web service) is public, on 80/443. Everything else is reachable inside the compose network only;
+# Memgraph (and Lab, if started) listen on the server's localhost for SSH tunnels.
+#
+# On the server, put this in .env so a plain `docker compose ...` uses all three files:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml:docker-compose.vps.yml
+services:
+  web:   # Caddy: static React build + reverse proxy + HTTPS
+    build: { context: ./web, dockerfile: Dockerfile.prod }
+    ports: !override ["80:80", "443:443"]
+    environment: !override
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env, e.g. backtrace.example.com}
+    volumes: !override
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data       # certificates: keep this volume, or Let's Encrypt rate limits bite on rebuilds
+      - caddy_config:/config
+    depends_on: [api, prediction-market-backend]
+    restart: unless-stopped
+
+  api:
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]   # no --reload: code is baked into the image
+    ports: !reset []
+    volumes: !override
+      - ./data:/data                  # data/raw CSVs (copied to the server; gitignored)
+      - ./agent:/srv/agent:ro         # the app agent behind the web chat (CLAUDE.md + skills)
+      - claude_home:/root/.claude     # agent chat sessions survive container restarts
+    restart: unless-stopped
+
+  memgraph:
+    ports: !override ["127.0.0.1:7687:7687"]   # no auth: never expose publicly; reach it with ssh -L 7687:localhost:7687
+    restart: unless-stopped
+
+  lab:   # Memgraph Lab, off by default: docker compose --profile tools up -d lab, then ssh -L 3000:localhost:3000
+    profiles: [tools]
+    ports: !override ["127.0.0.1:3000:3000"]
+
+  prediction-market-backend:
+    ports: !reset []
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:
+  claude_home:
