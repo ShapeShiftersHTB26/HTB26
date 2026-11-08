@@ -26,6 +26,7 @@ services:
       BACKTRACE_STORE: ${BACKTRACE_STORE:-postgres}   # default row store: postgres | graph
       PM_API_URL: ${PM_API_URL:-http://prediction-market-backend:8080}   # markets settled by data (api/app/markets.py)
       PM_ADMIN_KEY: ${PM_ADMIN_KEY:-dev-admin-key}   # = the prediction-market backend's ADMIN_API_KEY
+      ACCESS_CODE: ${ACCESS_CODE:-}   # the gate the web server / Caddy asks the api about (empty = no gate)
       WATCHFILES_FORCE_POLLING: "true"
     volumes:
       - ./api/app:/srv/app

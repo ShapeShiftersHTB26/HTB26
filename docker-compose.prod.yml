@@ -28,9 +28,11 @@ services:
       ACCESS_CODE: ${ACCESS_CODE:?set ACCESS_CODE in .env - the code visitors enter to open the site}
 
   lab:
-    profiles: [debug]              # not started (an open database console); run with --profile debug if needed
+    profiles: [tools]              # not started (an open database console); --profile tools to run it
 
   api:
     ports: !reset []               # reachable only through the web server (/api proxy, behind ACCESS_CODE)
-    environment:   # the api opens + settles data-settled markets through the backend's admin endpoints
+    environment:
+      ACCESS_CODE: ${ACCESS_CODE:?set ACCESS_CODE in .env - the code visitors enter to open the site}
+      # the api opens + settles data-settled markets through the backend's admin endpoints
       PM_ADMIN_KEY: ${PM_ADMIN_KEY:?set PM_ADMIN_KEY in .env to ADMIN_API_KEY from prediction-market/.env.prod}

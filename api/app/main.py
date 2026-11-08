@@ -11,6 +11,7 @@ from mcp.server.fastmcp import FastMCP
 
 from . import graph, markets, notebook, ops, pg, thread  # noqa: F401  (imports register operations)
 from . import worker as thread_worker
+from .gate import router as gate_router
 from .registry import REGISTRY, REST_ONLY
 
 
@@ -50,6 +51,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="backtrace", lifespan=lifespan)
 app.mount("/mcp", mcp.streamable_http_app())
+app.include_router(gate_router)  # access-code gate for Caddy forward_auth (ACCESS_CODE)
 
 
 @app.get("/api/ops")

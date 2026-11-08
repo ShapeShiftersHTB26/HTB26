@@ -2,7 +2,16 @@
 # Caddy gets and renews the HTTPS certificate for {$DOMAIN} itself: the domain's DNS A record must point at the
 # server and ports 80 + 443 must be open. After editing this file: docker compose restart web
 {$DOMAIN} {
-	# Optional password for the whole site. The app has no login, so anyone with the URL can drive the agent
+	# Access-code gate (ACCESS_CODE in .env): before anything else, Caddy asks the api whether this request carries
+	# the unlock cookie; if not, the visitor gets the "enter access code" page. The unlock form posts to /__unlock.
+	forward_auth api:8000 {
+		uri /__gate/check
+	}
+	handle /__unlock {
+		reverse_proxy api:8000
+	}
+
+	# (Alternative to the access-code gate above: a browser password prompt.) The app has no login, so anyone with the URL can drive the agent
 	# (your Anthropic bill) and create markets (paid by the admin wallet). To turn it on, make a hash with
 	#   docker compose exec web caddy hash-password
 	# then uncomment and paste it (user name is yours to pick):

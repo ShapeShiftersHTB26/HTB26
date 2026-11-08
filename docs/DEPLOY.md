@@ -336,7 +336,7 @@ python3 scripts/import_state.py --check       # every manifest finds its rows; s
   - call the REST ops at `/api/op/*`, including writes;
   - create markets, whose rent the admin wallet pays.
 
-  For a private demo, turn on the password block in `deploy/Caddyfile` (the instructions are inside it).
+  For a private demo, set `ACCESS_CODE` in `.env`: every visitor first gets an "enter access code" page, which covers the app, `/api` and `/pm-api`. Caddy asks the api about each request (`forward_auth`, `api/app/gate.py`), and the right code sets a cookie that lasts 30 days. The browser password block in `deploy/Caddyfile` is an alternative.
 - **Keep 7687 private.** Memgraph has no password. `docker-compose.vps.yml` binds it to localhost only; keep it that way.
 - **Never commit the secrets.** `.env`, `prediction-market/.env.prod` and `prediction-market/keys/` are gitignored.
 - **Security updates.** Ubuntu installs them automatically (`unattended-upgrades`). After a kernel update, reboot when convenient: `sudo reboot`.
