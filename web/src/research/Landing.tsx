@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Dataset, op } from "../api";
+import ModelSelect, { ModelKey, modelKey } from "../ModelSelect";
 
 export type Stage = "ask" | "shape" | "data" | "answer" | "answered";
 const STEPS: { key: Stage | "future"; label: string; hint: string }[] = [
@@ -51,6 +52,21 @@ export default function Landing(props: { onStart: (intentId: string) => void }) 
       /* storage unavailable */
     }
   };
+  const [model, setModel] = useState<ModelKey>(() => {
+    try {
+      return modelKey(localStorage.getItem("backtrace.model"));
+    } catch {
+      return "haiku";
+    }
+  });
+  const pickModel = (m: ModelKey) => {
+    setModel(m);
+    try {
+      localStorage.setItem("backtrace.model", m);
+    } catch {
+      /* storage unavailable */
+    }
+  };
   const [datasets, setDatasets] = useState<(Dataset & { examples?: string[] })[]>([]);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -67,7 +83,7 @@ export default function Landing(props: { onStart: (intentId: string) => void }) 
     setBusy(true);
     setErr(null);
     try {
-      const r = await op<{ intent_id: string }>("ask", { text: text.trim(), mode: auto ? "auto" : "guided" });
+      const r = await op<{ intent_id: string }>("ask", { text: text.trim(), mode: auto ? "auto" : "guided", model });
       props.onStart(r.intent_id);
     } catch (e: any) {
       setErr(e.message);
@@ -92,10 +108,16 @@ export default function Landing(props: { onStart: (intentId: string) => void }) 
                placeholder="e.g. Will the flat market in Reading grow next year?" />
         <button className="approve" disabled={busy || !text.trim()}>{busy ? "Starting…" : "Start"}</button>
       </form>
-      <label className="auto-toggle landing-auto">
-        <input type="checkbox" checked={auto} onChange={(e) => toggleAuto(e.target.checked)} />
-        <span>Auto-accept: let the agent approve its own steps and take me straight to the answer</span>
-      </label>
+      <div className="landing-opts">
+        <label className="auto-toggle">
+          <input type="checkbox" checked={auto} onChange={(e) => toggleAuto(e.target.checked)} />
+          <span>Auto-accept: let the agent approve its own steps and take me straight to the answer</span>
+        </label>
+        <label className="landing-model">
+          <span>Agent</span>
+          <ModelSelect value={model} onChange={pickModel} />
+        </label>
+      </div>
       {err && <div className="error small">{err}</div>}
       {datasets.length > 0 && (
         <>
