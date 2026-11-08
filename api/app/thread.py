@@ -200,13 +200,16 @@ def _stage(items: list[dict], intents: list[dict]) -> str:
 
 
 @operation(mcp=False)
-def get_thread(intent_id: str) -> dict:
+def get_thread(intent_id: str, at: str | None = None) -> dict:
     """UI: one research thread in order: messages, proposals (with full content, head flag and comments),
-    dataset cards and results, plus the agent's status and the journey stage."""
-    intents = _intents()
-    root = _root_of(intent_id, intents)
+    dataset cards and results, plus the agent's status and the journey stage.
+    at: an ISO timestamp from get_replay: the thread as it was then (read-only replay; nothing is changed)."""
+    full_intents = _intents()
+    root = _root_of(intent_id, full_intents)
+    asof = AsOf(at) if at else None
+    intents = asof.intents(full_intents, root) if asof else full_intents
     ids = _thread_ids(root, intents)
-    views = O._all_views()
+    views = asof.views(O._all_views()) if asof else O._all_views()
     names = {v["id"]: v["name"] for v in views}
     vkind = {v["id"]: v.get("kind") for v in views}
     heads: set[str] = set()
@@ -220,22 +223,30 @@ def get_thread(intent_id: str) -> dict:
     items: list[dict] = []
     for r in g.run("MATCH (m:Message {intent_id:$q}) RETURN m ORDER BY m.created_at", q=root):
         m = _decode_msg(r["m"])
+        if asof and m["created_at"] > asof.at:
+            continue
         items.append({"type": "message", "at": m["created_at"], **m})
     pids = []
     for r in g.run(f"MATCH (p)-[:{P.VIEW_EDGES}]->(v:View) WHERE p.intent_id IN $ids "
                    "RETURN labels(p)[0] AS label, p", ids=ids):
         p = P.decode(r["p"])
+        if asof and not (p := asof.proposal(p)):
+            continue
         pids.append(p["id"])
         items.append({"type": "proposal", "at": p["created_at"], "kind": P.LABEL_TO_KIND[r["label"]],
                       "view_name": names.get(p["view_id"]), "is_head": p["id"] in heads, "proposal": p})
     comments: dict[str, list] = {}
     for r in g.run("MATCH (c:Comment) WHERE c.target_id IN $ids RETURN c ORDER BY c.created_at", ids=pids):
-        comments.setdefault(r["c"]["target_id"], []).append(r["c"])
+        if not asof or r["c"]["created_at"] <= asof.at:
+            comments.setdefault(r["c"]["target_id"], []).append(r["c"])
     summaries = {q["id"]: q for q in O._intent_summaries(views) if q["id"] in ids}
+    if asof:
+        summaries = {k: asof.intent(q) for k, q in summaries.items()}
+    latest = asof.latest_instance if asof else X.latest_instance
     for qid in ids:
         q = summaries.get(qid)
         if q and q["status"] == "answered" and q.get("result_view_id"):
-            inst = X.latest_instance(q["result_view_id"])
+            inst = latest(q["result_view_id"])
             items.append({"type": "result", "at": q.get("answered_at") or q["created_at"], "intent_id": qid,
                           "text": q["text"], "summary": q.get("summary"), "result_kind": q.get("result_kind"),
                           "result_current": q.get("result_current"), "view_id": q["result_view_id"],
@@ -248,20 +259,25 @@ def get_thread(intent_id: str) -> dict:
     datasets = {d["id"]: d for d in _catalog() if d["id"] in ds_ids} if ds_ids else {}
     rq = intents[root]
     thread_intents = [summaries.get(i, intents[i]) for i in ids]
-    canvas = _canvas(ids, items, thread_intents, {v["id"]: v for v in views})
+    canvas = _canvas(ids, items, thread_intents, {v["id"]: v for v in views}, asof)
+    if asof:  # replay: the agent shows as busy between the user's message and its reply
+        last = next((i for i in reversed(items) if i["type"] == "message"), None)
+        rq = {**rq, "status": summaries.get(root, rq)["status"], "agent_error": None, "agent_activity": None,
+              "agent_status": "working" if last and last.get("role") == "user" else "idle"}
     return {"intent": {"id": root, "text": rq["text"], "title": rq.get("title"), "status": rq["status"],
                        "mode": rq.get("mode"),
                        "auto": rq.get("mode") == "auto",
                        "agent_model": rq.get("agent_model"),
                        "agent_status": rq.get("agent_status") or "idle", "agent_error": rq.get("agent_error"),
                        "agent_activity": rq.get("agent_activity"),
-                       "created_at": rq["created_at"]},
+                       "created_at": rq["created_at"], "at": at},
             "intents": [{"id": q["id"], "text": q["text"], "status": q["status"]} for q in thread_intents],
             "items": items, "comments": comments, "datasets": datasets, "names": names,
             "view_kinds": vkind, "stage": _stage(items, thread_intents), "canvas": canvas}
 
 
-def _canvas(ids: list[str], items: list[dict], thread_intents: list[dict], views: dict[str, dict]) -> dict:
+def _canvas(ids: list[str], items: list[dict], thread_intents: list[dict], views: dict[str, dict],
+            asof: "AsOf | None" = None) -> dict:
     """The thread's working graph: its tables (full current + pending shape versions, transforms, visuals,
     latest instance), upstream lineage down to the sources, notes, and dataset choices still open."""
     order: list[str] = []
@@ -292,6 +308,8 @@ def _canvas(ids: list[str], items: list[dict], thread_intents: list[dict], views
     for r in g.run(f"MATCH (p)-[:{P.VIEW_EDGES}]->(v:View) WHERE v.id IN $vids RETURN labels(p)[0] AS label, p",
                    vids=order):
         p = P.decode(r["p"])
+        if asof and not (p := asof.proposal(p)):
+            continue
         full[p["view_id"]][P.LABEL_TO_KIND[r["label"]]].append(p)
     answers = {q["result_view_id"]: q.get("summary") for q in thread_intents
                if q.get("status") == "answered" and q.get("result_view_id")}
@@ -307,7 +325,7 @@ def _canvas(ids: list[str], items: list[dict], thread_intents: list[dict], views
         vis_heads = {x["id"] for x in P.heads_by_tree(ps["visual"])}
         visuals = [{"id": x["id"], "status": x["status"], "rationale": x.get("rationale")}
                    for x in by_time(ps["visual"]) if x["id"] in vis_heads or x["status"] == "pending"]
-        inst = X.latest_instance(vid)
+        inst = asof.latest_instance(vid) if asof else X.latest_instance(vid)
         nodes.append({
             "id": vid, "name": v["name"], "kind": v.get("kind"), "member": v.get("intent_id") in ids,
             "head_schema": hs, "pending_schemas": [p for p in by_time(ps["schema"]) if p["status"] == "pending"],
@@ -321,7 +339,7 @@ def _canvas(ids: list[str], items: list[dict], thread_intents: list[dict], views
                 if r in views:
                     edges.append({"from": vid, "to": r, "pending": pending, "kind": t.get("kind")})
     notes = [dict(r["n"]) for r in g.run("MATCH (n:Note) WHERE n.intent_id IN $ids RETURN n ORDER BY n.created_at",
-                                          ids=ids)]
+                                          ids=ids) if not asof or r["n"]["created_at"] <= asof.at]
     open_datasets: list[str] = []
     for i in items:
         if i["type"] == "message" and i.get("kind") == "datasets":
@@ -349,6 +367,195 @@ def _canvas(ids: list[str], items: list[dict], thread_intents: list[dict], views
                           "views": [v for v in vids if v in on_canvas]})
     return {"nodes": nodes, "edges": edges, "notes": notes, "open_datasets": open_datasets, "focus": focus,
             "questions": questions}
+
+
+# ---------------------------------------------------------------- replay (the thread as it was at a moment)
+
+def _decision_times() -> dict[str, str]:
+    """When each proposal was approved / discarded. Newer ones store decided_at; older ones are estimated:
+    - a transform: its first instance (it runs on approval); a shape approved with it (same counter): the same;
+    - else the user's next "Approved ..." / "Auto-accept..." action message in that thread (the UI posts one right
+      after deciding), capped by the next approval with a known time (counters are global and in order);
+    - a discard: the next sibling on that view (the revision that replaced it) or the user's "Discarded ..." message;
+    - never at or before the proposal itself (then +1 ms), so a replay always shows it pending first."""
+    ps = [{**P.decode(r["p"]), "label": r["label"]} for r in g.run(
+        f"MATCH (p)-[:{P.VIEW_EDGES}]->(:View) WHERE p.status <> 'pending' RETURN labels(p)[0] AS label, p")]
+    ran = {r["t"]: r["at"] for r in g.run(
+        "MATCH (i:Instance)-[:USED_TRANSFORM]->(t:Transform) WITH t, min(i.created_at) AS at RETURN t.id AS t, at")}
+    by_counter = {p["counter"]: p.get("decided_at") or ran[p["id"]] for p in ps
+                  if p["label"] == "Transform" and p["status"] == "approved" and p.get("counter") is not None
+                  and (p.get("decided_at") or p["id"] in ran)}
+    intents = _intents()
+    roots: dict[str, str | None] = {}
+
+    def root(qid):
+        if qid not in roots:
+            roots[qid] = _root_of(qid, intents) if qid in intents else None
+        return roots[qid]
+    # The UI posts "Approved ..." / "Discarded ..." right after a user decision (decided_by 'user'). 'auto' is the
+    # agent approving its own step mid-turn (right after proposing it), or the end-of-turn accept-all, which posts
+    # "Auto-accepted N ..." just after the agent's reply, or the user switching auto-accept on ("Auto-accept is on").
+    acts: dict[tuple, list[str]] = {}  # (root, "approve" | "discard" | "auto" | "auto-on") -> times
+    replies: dict[str, list[str]] = {}  # root -> agent message times
+    for r in g.run("MATCH (m:Message) WHERE m.role = 'agent' OR m.kind = 'action' RETURN m.intent_id AS q, "
+                   "m.role AS role, m.created_at AS at, m.text AS t ORDER BY m.created_at"):
+        if r["role"] == "agent":
+            replies.setdefault(r["q"], []).append(r["at"])
+            continue
+        t = r["t"] or ""
+        kind = ("approve" if t.startswith("Approved") else "discard" if t.startswith("Discarded")
+                else "auto-on" if t.startswith("Auto-accept is on") else "auto" if t.startswith("Auto-accepted") else None)
+        if kind:
+            acts.setdefault((r["q"], kind), []).append(_plus_ms(r["at"], -1))  # decided just before it was posted
+
+    def after(xs, at):
+        return next((x for x in xs if x > at), None)
+
+    def first_act(p, kind):
+        q = root(p.get("intent_id"))
+        if p.get("decided_by") != "auto":
+            return after(acts.get((q, kind), []), p["created_at"])
+        reply = after(replies.get(q, []), p["created_at"])
+        acc = after(acts.get((q, "auto"), []), p["created_at"])
+        if reply and acc and _secs(acc) - _secs(reply) < 5:
+            return acc  # still pending when the turn ended: accepted with the rest
+        on = after(acts.get((q, "auto-on"), []), p["created_at"])
+        if on and (not reply or on < reply):
+            return on  # pending until auto-accept was switched on
+        return None  # the agent approved it right away
+
+    def known(p):
+        return p.get("decided_at") or ran.get(p["id"]) or by_counter.get(p.get("counter"))
+    approved = sorted((p for p in ps if p["status"] == "approved"), key=lambda p: p.get("counter") or 0)
+    nxt, cap = "~", {}
+    for p in reversed(approved):
+        cap[p["id"]] = nxt
+        if known(p):
+            nxt = min(nxt, known(p))
+    out: dict[str, str] = {}
+    for p in approved:
+        a = first_act(p, "approve")
+        t = known(p) or (min(a, cap[p["id"]]) if a else "")
+        out[p["id"]] = t if "~" > t > p["created_at"] else _plus_ms(p["created_at"])
+    siblings: dict[tuple, list[str]] = {}
+    for r in g.run(f"MATCH (p)-[:{P.VIEW_EDGES}]->(v:View) RETURN labels(p)[0] AS l, v.id AS v, p.created_at AS at"):
+        siblings.setdefault((r["l"], r["v"]), []).append(r["at"])
+    for p in ps:
+        if p["status"] == "discarded":
+            later = [x for x in siblings.get((p["label"], p["view_id"]), []) if x > p["created_at"]]
+            t = p.get("decided_at") or min(later + [first_act(p, "discard") or "~"])
+            out[p["id"]] = t if "~" > t > p["created_at"] else _plus_ms(p["created_at"])
+    return out
+
+
+def _plus_ms(iso: str, ms: int = 1) -> str:
+    from datetime import datetime, timedelta
+    return (datetime.fromisoformat(iso) + timedelta(milliseconds=ms)).isoformat(timespec="milliseconds")
+
+
+class AsOf:
+    """Graph state cut down to what existed at `at`: later nodes hidden, later decisions and answers undone."""
+
+    def __init__(self, at: str):
+        self.at = at
+        self.decided = _decision_times()
+        self._inst: dict[str, list] = {}
+
+    def proposal(self, p: dict) -> dict | None:
+        if (p.get("created_at") or "") > self.at:
+            return None
+        if p.get("status") != "pending" and self.decided.get(p["id"], p.get("created_at") or "") > self.at:
+            return {**p, "status": "pending", "counter": None}
+        return p
+
+    def views(self, views: list[dict]) -> list[dict]:
+        return [{**v, "_proposals": {k: [x for p in xs if (x := self.proposal(p))] for k, xs in v["_proposals"].items()}}
+                for v in views if (v.get("created_at") or "") <= self.at]
+
+    def intents(self, intents: dict, root: str) -> dict:
+        return {k: self.intent(q) for k, q in intents.items() if k == root or q["created_at"] <= self.at}
+
+    def intent(self, q: dict) -> dict:
+        if q.get("status") == "answered" and (q.get("answered_at") or "") > self.at:
+            return {**q, "status": "open", "summary": None, "result_id": None, "result_kind": None,
+                    "result_view_id": None, "result_current": None}
+        return q
+
+    def latest_instance(self, view_id: str) -> dict | None:
+        if view_id not in self._inst:
+            self._inst[view_id] = X.instances(view_id)
+        return next((i for i in self._inst[view_id] if i["created_at"] <= self.at), None)
+
+
+@operation(mcp=False)
+def get_replay(intent_id: str) -> dict:
+    """UI: the moments a workspace went through (messages, proposals, decisions, new data, notes, answers), oldest
+    first, each with short labels. Pass a moment's `at` to get_thread to see the workspace as it was then."""
+    intents = _intents()
+    root = _root_of(intent_id, intents)
+    ids = _thread_ids(root, intents)
+    names = {r["id"]: r["name"] for r in g.run("MATCH (v:View) RETURN v.id AS id, v.name AS name")}
+    what = {"SchemaVersion": "shape", "Transform": "steps", "Visual": "visual"}
+    ev: list[tuple[str, str]] = []
+    for r in g.run("MATCH (m:Message {intent_id:$q}) RETURN m ORDER BY m.created_at", q=root):
+        m = r["m"]
+        ev.append((m["created_at"], f"{'You' if m['role'] == 'user' else 'Agent'}: "
+                                    f"{' '.join((m.get('text') or '').split())[:90]}"))
+    decided = _decision_times()
+    vids, pids = set(), []
+    props = [(r["l"], r["p"]) for r in g.run(
+        f"MATCH (p)-[:{P.VIEW_EDGES}]->(:View) WHERE p.intent_id IN $ids RETURN labels(p)[0] AS l, p", ids=ids)]
+    discarded = {}  # (label, view) -> created_at of its discarded proposals: a later sibling is a revision
+    for label, p in props:
+        if p["status"] == "discarded":
+            discarded.setdefault((label, p["view_id"]), []).append(p["created_at"])
+    for label, p in props:
+        w = what[label]
+        name = names.get(p["view_id"], p["view_id"])
+        vids.add(p["view_id"])
+        pids.append(p["id"])
+        revised = p.get("parent_id") or any(x < p["created_at"] for x in discarded.get((label, p["view_id"]), []))
+        ev.append((p["created_at"], f"{'Revised' if revised else 'Proposed'} {w} for {name}"))
+        if p["status"] != "pending" and p["id"] in decided:
+            ev.append((decided[p["id"]], f"{p['status'].capitalize()} {w} for {name}"))
+    for r in g.run("MATCH (c:Comment) WHERE c.target_id IN $ids RETURN c.created_at AS at, c.text AS t", ids=pids):
+        ev.append((r["at"], f"Comment: {' '.join((r['t'] or '').split())[:80]}"))
+    for r in g.run("MATCH (i:Instance) WHERE i.view_id IN $v RETURN i.view_id AS v, i.created_at AS at, "
+                   "i.row_count AS n", v=sorted(vids)):
+        if r["at"] < intents[root]["created_at"]:
+            continue  # a reused table's history from before this workspace
+        rows = f" ({r['n']:,} rows)" if isinstance(r["n"], int) else ""
+        ev.append((r["at"], f"Computed {names.get(r['v'], r['v'])}{rows}"))
+    for r in g.run("MATCH (n:Note) WHERE n.intent_id IN $ids RETURN n.created_at AS at, n.text AS t", ids=ids):
+        ev.append((r["at"], f"Note: {(r['t'] or '')[:80]}"))
+    for i in ids:
+        q = intents[i]
+        if i != root:
+            ev.append((q["created_at"], f"New question: {q['text'][:80]}"))
+        if q.get("status") == "answered" and q.get("answered_at"):
+            ev.append((q["answered_at"], f"Answered: {q['text'][:80]}"))
+    order = ("You", "New", "Comment", "Proposed", "Revised", "Approved", "Discarded", "Computed", "Note",
+             "Answered", "Agent")
+    ev.sort(key=lambda e: (e[0], next((k for k, w in enumerate(order) if e[1].startswith(w)), 99)))
+    moments: list[dict] = []
+    for at, label in ev:  # one moment per event; only near-simultaneous ones (< 50 ms) share a moment
+        if moments and label in moments[-1]["labels"]:
+            continue
+        subject = label.split(" ", 1)[-1]  # "Approved shape for x" -> "shape for x"
+        own_proposal = label.startswith(("Approved", "Discarded")) and any(
+            x.startswith(("Proposed", "Revised")) and x.split(" ", 1)[-1] == subject for x in moments[-1]["labels"]) \
+            if moments else False  # a decision always gets its own step, after the proposal shown pending
+        if moments and not own_proposal and _secs(at) - _secs(moments[-1]["at"]) < 0.05:
+            moments[-1]["at"] = at
+            moments[-1]["labels"].append(label)
+        else:
+            moments.append({"at": at, "labels": [label]})
+    return {"intent_id": root, "moments": moments}
+
+
+def _secs(iso: str) -> float:
+    from datetime import datetime
+    return datetime.fromisoformat(iso).timestamp()
 
 
 # ---------------------------------------------------------------- agent tools (MCP)
@@ -598,3 +805,84 @@ def set_model(intent_id: str, model: str) -> dict:
     root = _root_of(intent_id)
     g.run("MATCH (q:Intent {id:$q}) SET q.agent_model = $m", q=root, m=mid)
     return {"intent_id": root, "agent_model": mid}
+
+
+# ---------------------------------------------------------------- deleting a workspace
+
+def _market_views() -> set[str] | None:
+    """View ids that prediction markets settle from (their view and pinned chain). None = couldn't check."""
+    from . import markets as M
+    if not M.PM_API_URL:
+        return set()  # no market backend: no markets to protect
+    try:
+        out: set[str] = set()
+        for m in M._pm("GET", "/markets"):
+            rule = m.get("resolution") or {}
+            if rule.get("source") == "backtrace":
+                out.add(rule.get("view_id"))
+                out |= set((rule.get("pins") or {}).keys())
+        return out
+    except Exception:  # noqa: BLE001  (backend down: fall back to the market cards posted in chats)
+        return None
+
+
+def _market_card_views() -> set[str]:
+    return {r["v"] for r in g.run("MATCH (m:Message {kind:'market'}) WHERE m.view_id IS NOT NULL "
+                                  "RETURN DISTINCT m.view_id AS v")}
+
+
+@operation(mcp=False)
+def delete_workspace(intent_id: str, dry_run: bool = False) -> dict:
+    """UI: delete a research workspace: its questions, chat, notes, and the tables made for it (with their rows).
+    Kept: source data (loaded datasets are shared), and any table another workspace reads or a prediction market
+    settles from. dry_run: only report what would go."""
+    intents = _intents()
+    root = _root_of(intent_id, intents)
+    if intents[root].get("agent_status") in ("queued", "working"):
+        raise ValueError("the agent is working on this workspace; wait for it to finish (or let it reply) first")
+    ids = _thread_ids(root, intents)
+    views = O._all_views()
+    by_id = {v["id"]: v for v in views}
+    mine = {v["id"] for v in views if v.get("intent_id") in ids}
+    keep: dict[str, str] = {}
+    for vid in mine:
+        if by_id[vid].get("kind") == "source":
+            keep[vid] = "source data (shared)"
+    market = _market_views()
+    checked = "markets" if market is not None else "market cards in chats (market backend unreachable)"
+    market = (market or set()) | _market_card_views()
+    for vid in mine:
+        if vid in market:
+            keep.setdefault(vid, "a prediction market settles from it")
+    # anything outside the deleted set that reads one of ours keeps it (and, transitively, what it reads)
+    changed = True
+    while changed:
+        changed = False
+        gone = mine - set(keep)
+        for v in views:
+            if v["id"] in gone:
+                continue
+            for t in v["_proposals"]["transform"]:
+                if t["status"] == "discarded":
+                    continue
+                for r in t.get("reads") or []:
+                    if r in gone:
+                        keep[r] = f"{v['name']} reads it"
+                        changed = True
+    gone = sorted(mine - set(keep))
+    out = {"intent_id": root, "title": intents[root].get("title") or intents[root]["text"],
+           "questions": len(ids),
+           "messages": g.run("MATCH (m:Message {intent_id:$q}) RETURN count(m) AS n", q=root)[0]["n"],
+           "notes": g.run("MATCH (n:Note) WHERE n.intent_id IN $ids RETURN count(n) AS n", ids=ids)[0]["n"],
+           "deleted_tables": [by_id[v]["name"] for v in gone],
+           "kept_tables": [{"name": by_id[v]["name"], "why": why} for v, why in keep.items()],
+           "checked": checked, "dry_run": dry_run}
+    if dry_run:
+        return out
+    from .reset import remove
+    if gone:
+        remove(gone)
+    g.run("MATCH (m:Message {intent_id:$q}) DETACH DELETE m", q=root)
+    g.run("MATCH (n:Note) WHERE n.intent_id IN $ids DETACH DELETE n", ids=ids)
+    g.run("MATCH (q:Intent) WHERE q.id IN $ids DETACH DELETE q", ids=ids)
+    return out

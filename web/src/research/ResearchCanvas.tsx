@@ -51,7 +51,7 @@ function tableSize(v: CanvasView, compact: boolean): [number, number] {
  * Tables are compact unless focused, pending, or the answer to the selected question; the selected question's
  * chain is highlighted and the rest fades. */
 export default function ResearchCanvas() {
-  const { t, focus, setFocus, activeQ, setActiveQ } = useThread();
+  const { t, focus, setFocus, activeQ, setActiveQ, highlight, camera, readOnly } = useThread();
   const c = t.canvas;
   const flow = useReactFlow();
   const [measured, setMeasured] = useState<Record<string, [number, number]>>({});
@@ -68,7 +68,7 @@ export default function ResearchCanvas() {
   };
 
   const chains = useMemo(() => questionChains(c), [t]);
-  const { nodes, edges } = useMemo(() => {
+  const { nodes, edges, size } = useMemo(() => {
     const nodes: Node[] = [];
     const edges: Edge[] = [];
     const size = new Map<string, [number, number]>();
@@ -156,34 +156,91 @@ export default function ResearchCanvas() {
     const top = Math.min(...middle.map((n) => n.position.y), 0) - qh - 70;
     band(qs, top);
     if (srcs.length) band(srcs, Math.max(...middle.map((n) => n.position.y + wh(n)[1]), top + 96) + 90);
-    return { nodes, edges };
+    return { nodes, edges, size };
   }, [t, measured, focus, activeQ, chains]);
 
-  const last = useRef<string | null>(null);
+  // replay: the node this step changed flashes (key restarts the animation on every step)
+  const shown = useMemo(
+    () => (highlight ? nodes.map((n) => (n.id === highlight.id
+      ? { ...n, className: `${n.className || ""} rp-flash rp-flash-${highlight.tone} rp-k${highlight.key % 2}` } : n)) : nodes),
+    [nodes, highlight],
+  );
+
+  // The camera. Aimed from OUR layout (dagre positions + measured or estimated sizes), never from React Flow's
+  // internal measurements, which lag a frame behind when nodes appear or resize (that left the view empty).
+  // The floating chat covers the canvas's right side, so targets are centred in the part left of it.
+  // A target is re-aimed while the layout settles (sizes arrive after the first render) for SETTLE_MS, then the
+  // view is left alone so it never fights the user's own panning.
+  const SETTLE_MS = 2500;
+  const wrap = useRef<HTMLDivElement>(null);
+  const rectOf = (ids: string[]) => {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    ids.forEach((id) => {
+      const n = nodes.find((x) => x.id === id);
+      const wh = size.get(id);
+      if (!n || !wh) return;
+      const w = (n.style?.width as number) || wh[0];
+      const h = measured[id]?.[1] ?? wh[1];
+      x0 = Math.min(x0, n.position.x); y0 = Math.min(y0, n.position.y);
+      x1 = Math.max(x1, n.position.x + w); y1 = Math.max(y1, n.position.y + h);
+    });
+    return x0 === Infinity ? null : { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  };
+  const look = (ids: string[], maxZoom: number, pad = 48) => {
+    const r = rectOf(ids);
+    const el = wrap.current;
+    if (!r || !el) return;
+    const box = el.getBoundingClientRect();
+    let W = box.width;
+    const chat = document.querySelector(".chatwin")?.getBoundingClientRect();
+    if (chat && chat.left > box.left + box.width * 0.4 && chat.left < box.right) W = chat.left - box.left - 8;
+    const H = box.height;
+    const zoom = Math.max(0.15, Math.min(maxZoom, (W - 2 * pad) / r.w, (H - 2 * pad) / r.h));
+    // centred; a target taller than the view is shown from its top
+    const y = r.h * zoom > H - 2 * pad ? pad - r.y * zoom : H / 2 - (r.y + r.h / 2) * zoom;
+    flow.setViewport({ x: W / 2 - (r.x + r.w / 2) * zoom, y, zoom }, { duration: 500 });
+  };
+  const sig = (ids: string[]) =>
+    ids.map((id) => nodes.find((n) => n.id === id)).filter(Boolean)
+      .map((n) => `${n!.id}@${Math.round(n!.position.x)},${Math.round(n!.position.y)},${n!.style?.width},${measured[n!.id]?.[1] ?? ""}`)
+      .join("|");
+
+  // what to look at: a focus (click, agent, replay step) wins over a framing request
+  const target: { ids: string[]; maxZoom: number; key: string } | null = focus
+    ? { ids: [focus], maxZoom: focus.startsWith("q:") ? 1.15 : 1, key: `f:${focus}` }
+    : camera
+      ? { ids: (camera.kind === "all" ? nodes.map((n) => n.id)
+            : camera.kind === "chain" ? [`q:${camera.q}`, ...(chains.get(camera.q || "") ?? [])] : camera.ids ?? [])
+            .filter((id) => nodes.some((n) => n.id === id)),
+          maxZoom: camera.kind === "all" ? 1 : 0.95, key: `c:${camera.key}` }
+      : null;
+  const tSig = target ? sig(target.ids) : "";
+  const aim = useRef<{ key: string; at: number; sig: string }>({ key: "", at: 0, sig: "" });
+  const pending = useRef(0);
   useEffect(() => {
-    if (!focus || focus === last.current) return;
-    const n = nodes.find((x) => x.id === focus);
-    if (!n) return;
-    last.current = focus;
-    if (focus.startsWith("q:")) {
-      // a question (with its answer): show the whole node
-      setTimeout(() => flow.fitView({ nodes: [{ id: focus }], padding: 0.35, maxZoom: 1.25, duration: 600 }), 60);
-      return;
-    }
-    const w = (n.style?.width as number) || 300;
-    flow.setCenter(n.position.x + w / 2, n.position.y + 160, { zoom: Math.max(flow.getZoom(), 0.85), duration: 500 });
-  }, [focus, nodes]);
+    if (!target || !target.ids.length || !tSig) return;
+    if (aim.current.key !== target.key) aim.current = { key: target.key, at: Date.now(), sig: "" };
+    else if (tSig === aim.current.sig || Date.now() - aim.current.at > SETTLE_MS) return;
+    aim.current.sig = tSig;
+    const t = target;
+    cancelAnimationFrame(pending.current); // only the newest aim may land (a stale one would undo it)
+    pending.current = requestAnimationFrame(() => look(t.ids, t.maxZoom));
+  }, [target?.key, tSig]);
 
   const count = useRef(0);
   useEffect(() => {
-    if (nodes.length !== count.current && !focus) setTimeout(() => flow.fitView({ duration: 400, maxZoom: 1 }), 50);
+    const aiming = !!target && Date.now() - aim.current.at <= SETTLE_MS;
+    if (nodes.length !== count.current && !focus && !aiming && !readOnly) {
+      cancelAnimationFrame(pending.current);
+      pending.current = requestAnimationFrame(() => look(nodes.map((n) => n.id), 1));
+    }
     count.current = nodes.length;
   }, [nodes.length]);
 
   return (
-    <div className="research-canvas">
+    <div className="research-canvas" ref={wrap}>
       <ReactFlow
-        nodes={nodes}
+        nodes={shown}
         edges={edges}
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}

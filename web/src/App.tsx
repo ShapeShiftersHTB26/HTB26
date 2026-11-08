@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
+import FastTrack from "./FastTrack";
 import MainApp from "./MainApp";
 import Research from "./research/Research";
 
@@ -58,6 +59,7 @@ export default function App() {
           <Adhd nav={nav} />
         </Suspense>
       )}
+      <FastTrack hash={hash} />
     </>
   );
 }

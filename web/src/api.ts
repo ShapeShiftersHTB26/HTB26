@@ -198,6 +198,7 @@ export type Thread = {
     agent_error?: string;
     agent_activity?: string;
     created_at: string;
+    at?: string | null; // set when this is a replay frame (get_thread at=)
   };
   intents: { id: string; text: string; status: string }[];
   items: ThreadItem[];

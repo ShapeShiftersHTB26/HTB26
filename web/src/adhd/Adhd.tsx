@@ -31,6 +31,17 @@ function Page({ nav }: { nav: ReactNode }) {
     setTimeout(() => setFx((f) => (f[kind] === until ? { ...f, [kind]: 0 } : f)), ms);
     if (kind === "shake") sfx.boom();
   });
+  // fast track (../FastTrack.tsx): the research answer landed while you were here
+  useEffect(() => {
+    const on = (e: Event) => {
+      if (!(e as CustomEvent<{ ready: boolean }>).detail?.ready) return void sfx.bad();
+      sfx.jackpot();
+      confetti(undefined, undefined, g.calm ? 40 : 220);
+      g.float("ANSWER READY!!!", { x: window.innerWidth / 2, y: window.innerHeight / 3 }, "#7CFC00", true);
+    };
+    window.addEventListener("bt:answer-ready", on);
+    return () => window.removeEventListener("bt:answer-ready", on);
+  }, [g.calm]);
   const fxClass = (Object.keys(fx) as Chaos[])
     .filter((k) => fx[k])
     .map((k) => `fx-${k}`)

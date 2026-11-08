@@ -65,22 +65,25 @@ def decide(target_id: str, decision: str, by: str) -> dict:
     if p["status"] != "pending":
         raise ValueError(f"'{target_id}' is already {p['status']}; propose a sibling instead")
     if decision == "discard":
-        g.run("MATCH (p {id:$id}) SET p.status = 'discarded', p.decided_by = $by", id=target_id, by=by)
+        g.run("MATCH (p {id:$id}) SET p.status = 'discarded', p.decided_by = $by, p.decided_at = $t",
+              id=target_id, by=by, t=g.now())
         return {"id": target_id, "status": "discarded"}
     if decision != "approve":
         raise ValueError("decision must be 'approve' or 'discard'")
 
+    now = g.now()
+
     def tx(t):
         c = t.run("MERGE (c:Counter {name:'global'}) ON CREATE SET c.value = 0 "
                   "SET c.value = c.value + 1 RETURN c.value AS v").single()["v"]
-        t.run("MATCH (p {id:$id}) SET p.status = 'approved', p.counter = $c, p.decided_by = $by",
-              id=target_id, c=c, by=by)
+        t.run("MATCH (p {id:$id}) SET p.status = 'approved', p.counter = $c, p.decided_by = $by, "
+              "p.decided_at = $t", id=target_id, c=c, by=by, t=now)
         bundled = []
         if label == "Transform":  # also approve input views' shapes proposed with this transform
             bundled = [r["id"] for r in t.run(
                 "MATCH (s:SchemaVersion {proposed_with:$id, status:'pending'}) "
-                "SET s.status = 'approved', s.counter = $c, s.decided_by = $by RETURN s.id AS id",
-                id=target_id, c=c, by=by)]
+                "SET s.status = 'approved', s.counter = $c, s.decided_by = $by, s.decided_at = $t "
+                "RETURN s.id AS id", id=target_id, c=c, by=by, t=now)]
         return c, bundled
 
     counter, bundled = g.write_tx(tx)

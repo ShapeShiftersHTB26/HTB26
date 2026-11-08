@@ -105,11 +105,12 @@ function Line({ it }: { it: ThreadItem }) {
   const { send, setFocus, setActiveQ } = useThread();
   if (it.type === "proposal") {
     const p = it.proposal;
-    const what = it.kind === "schema" && p.parent_id ? "a change" : LABEL[it.kind];
-    const verb = p.status === "pending" ? "proposed" : p.status === "approved" ? "✓" : "✗ discarded";
+    const what = p.parent_id ? (it.kind === "schema" ? "a change" : `a revised ${LABEL[it.kind]}`) : LABEL[it.kind];
+    const verb = p.status === "pending" ? "◌ proposed" : p.status === "approved" ? "✓" : "✗ discarded";
     return (
       <a className={`chat-link ${p.status}`} onClick={() => setFocus(p.view_id)}>
-        {verb} {what} · <b>{it.view_name}</b> →
+        {verb} {what} · <b>{it.view_name}</b>
+        {p.status === "pending" && <span className="cl-wait"> awaiting approval</span>} →
       </a>
     );
   }

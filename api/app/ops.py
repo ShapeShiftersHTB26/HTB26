@@ -34,7 +34,7 @@ def _all_views() -> list[dict]:
         f"MATCH (v:View) OPTIONAL MATCH (p)-[:{P.VIEW_EDGES}]->(v) "
         "RETURN v, collect(CASE WHEN p IS NULL THEN NULL ELSE "
         "{label: labels(p)[0], id: p.id, status: p.status, counter: p.counter, reads: p.reads, kind: p.kind, "
-        "parent_id: p.parent_id, uses: p.uses, intent_id: p.intent_id} END) AS ps "
+        "parent_id: p.parent_id, uses: p.uses, intent_id: p.intent_id, created_at: p.created_at} END) AS ps "
         "ORDER BY v.created_at")
     out = []
     for r in rows:

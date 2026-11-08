@@ -32,9 +32,10 @@ const Handles = () => (
 );
 
 function useAct() {
-  const { send, reload } = useThread();
+  const { send, reload, readOnly } = useThread();
   const [busy, setBusy] = useState(false);
   const act = async (id: string, decision: "approve" | "discard", msg: string) => {
+    if (readOnly) return;
     setBusy(true);
     try {
       await op("decide", { target_id: id, decision });
