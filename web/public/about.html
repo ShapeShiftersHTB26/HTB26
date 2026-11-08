@@ -1,0 +1,718 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Backtrace: research answers that trace back to their source rows, and an information exchange on what comes next, settled by re-running the same calculation.">
+<!-- Static explainer (pitch + architecture), served as-is from web/public at /about.html. -->
+<title>How Backtrace works</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,650;12..96,750&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column (max 1080px) on cool ledger paper; diagrams run full column width;
+   the hero pairs the thesis with a working "receipt" table. Ink blue = Backtrace, amber = the future / markets, green = verified. */
+:root {
+  --paper: #F3F5F8;
+  --panel: #FFFFFF;
+  --ink: #132033;
+  --muted: #5A6779;
+  --rule: #D7DDE6;
+  --chip: #EBEEF3;
+  --accent: #2541B2;
+  --accent-soft: #E4E9FA;
+  --amber: #A35F00;
+  --amber-soft: #FBEFDB;
+  --ok: #1B7A50;
+  --ok-soft: #DFF2E7;
+  --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Instrument Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0E131A; --panel: #151C26; --ink: #E4E9F0; --muted: #94A1B3; --rule: #283241; --chip: #1C2532;
+    --accent: #8EA4FF; --accent-soft: #1C2747; --amber: #F0B04C; --amber-soft: #36280F; --ok: #55C68E; --ok-soft: #12301F;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0E131A; --panel: #151C26; --ink: #E4E9F0; --muted: #94A1B3; --rule: #283241; --chip: #1C2532;
+  --accent: #8EA4FF; --accent-soft: #1C2747; --amber: #F0B04C; --amber-soft: #36280F; --ok: #55C68E; --ok-soft: #12301F;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 16px;
+  line-height: 1.6;
+  margin: 0;
+  padding-block: 0;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  -webkit-font-smoothing: antialiased;
+}
+.page { max-width: 1080px; margin: 0 auto; }
+a { color: var(--accent); text-underline-offset: 3px; }
+a:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
+code { background: var(--chip); padding: 1px 5px; border-radius: 4px; }
+p { margin: 0; }
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+
+/* ---------- top bar */
+.top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; padding-block: 22px; }
+.mark { display: flex; align-items: center; gap: 10px; font-family: var(--f-display); font-weight: 750; font-size: 20px; letter-spacing: -0.01em; color: var(--ink); text-decoration: none; }
+.mark svg { flex: none; }
+.top nav { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.top nav a { font-family: var(--f-mono); font-size: 12px; color: var(--muted); text-decoration: none; letter-spacing: 0.02em; }
+.top nav a:hover { color: var(--ink); }
+.top nav a.app-link { color: var(--accent); font-weight: 500; }
+
+/* ---------- shared section scaffolding */
+section { padding-block: 72px; border-top: 1px solid var(--rule); }
+.eyebrow { font-family: var(--f-mono); font-size: 12px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--accent); }
+.eyebrow.amber { color: var(--amber); }
+h2 { font-family: var(--f-display); font-weight: 650; font-size: clamp(28px, 3.6vw, 40px); line-height: 1.12; letter-spacing: -0.015em; margin-top: 10px; }
+h3 { font-size: 17px; font-weight: 600; line-height: 1.35; }
+.intro { max-width: 64ch; color: var(--muted); font-size: 17px; margin-top: 14px; }
+.sec-head { margin-bottom: 40px; }
+
+/* ---------- hero */
+.hero { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: 48px; align-items: start; padding-block: 40px 80px; }
+.hero h1 { font-family: var(--f-display); font-weight: 750; font-size: clamp(42px, 6.4vw, 72px); line-height: 1.02; letter-spacing: -0.025em; margin-top: 14px; }
+.hero .lede { font-size: 19px; line-height: 1.55; margin-top: 22px; max-width: 34em; }
+.hero .lede + .lede { color: var(--muted); font-size: 17px; margin-top: 14px; }
+.journey-strip { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 28px; font-family: var(--f-mono); font-size: 12px; }
+.journey-strip span { padding: 5px 10px; border-radius: 999px; background: var(--chip); color: var(--muted); }
+.journey-strip span.fut { background: var(--amber-soft); color: var(--amber); }
+
+/* the receipt */
+.receipt { margin: 0; background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; padding: 18px 18px 14px; box-shadow: 0 1px 0 var(--rule), 0 18px 40px -28px rgba(19, 32, 51, 0.45); }
+.rc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.rc-kind { font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.rc-title { font-weight: 600; font-size: 17px; margin-top: 2px; }
+.rc-grain { font-size: 13px; color: var(--muted); }
+.fp { display: inline-flex; align-items: center; gap: 6px; font-family: var(--f-mono); font-size: 11.5px; padding: 3px 8px; border-radius: 999px; background: var(--ok-soft); color: var(--ok); white-space: nowrap; }
+.rc-table { width: 100%; border-collapse: collapse; margin-top: 14px; font-variant-numeric: tabular-nums; font-size: 14px; }
+.rc-table th { text-align: left; font-weight: 500; font-size: 12px; color: var(--muted); padding: 6px 10px; border-bottom: 1px solid var(--rule); }
+.rc-table td { padding: 9px 10px; border-bottom: 1px solid var(--rule); }
+.rc-table .num { text-align: right; }
+.rc-table tbody tr { cursor: pointer; }
+.rc-table tbody tr:hover td { background: var(--chip); }
+.rc-table tbody tr.sel td { background: var(--accent-soft); }
+.rc-table tbody tr.sel td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.rc-table tr.future td { color: var(--amber); }
+.rc-table tr.future.sel td { background: var(--amber-soft); }
+.rc-table tr.future.sel td:first-child { box-shadow: inset 3px 0 0 var(--amber); }
+.q { display: inline-block; min-width: 2.4em; text-align: center; border: 1px dashed var(--amber); border-radius: 5px; padding: 0 6px; font-weight: 600; }
+.rc-trace { margin-top: 14px; min-height: 152px; }
+.trail { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.trail li { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; padding: 8px 0; font-size: 13.5px; line-height: 1.45; position: relative; }
+.trail li + li::before { content: ""; position: absolute; left: 22px; top: -6px; height: 12px; border-left: 1px solid var(--muted); }
+.trail .lv { font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); padding-top: 2px; }
+.trail b { font-weight: 600; }
+.trail code { font-size: 11.5px; }
+.future-note { font-size: 13.5px; color: var(--muted); line-height: 1.5; }
+.mkt { margin-top: 12px; border: 1px solid var(--amber); border-radius: 10px; padding: 12px 14px; background: var(--amber-soft); }
+.mkt .mq { font-weight: 600; font-size: 14px; line-height: 1.4; }
+.mkt .mrow { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; margin-top: 8px; font-size: 12.5px; }
+.mkt .chance { font-family: var(--f-mono); color: var(--amber); font-weight: 500; }
+.mkt .pin { font-family: var(--f-mono); color: var(--muted); }
+.receipt figcaption { font-size: 12px; color: var(--muted); margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--rule); }
+
+/* ---------- pitch columns */
+.cols3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 36px; }
+.col { border-top: 2px solid var(--ink); padding-top: 16px; }
+.col p { margin-top: 10px; color: var(--muted); }
+.col.key { border-top-color: var(--accent); }
+
+/* ---------- journey steps (a real sequence, so numbered) */
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; counter-reset: step; }
+.step { background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.step .n { font-family: var(--f-mono); font-size: 12px; color: var(--accent); display: flex; align-items: center; gap: 8px; }
+.step .n::before { counter-increment: step; content: counter(step); display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 500; }
+.step.fut { border-color: var(--amber); background: var(--amber-soft); }
+.step.fut .n { color: var(--amber); }
+.step.fut .n::before { background: var(--panel); color: var(--amber); }
+.step p { font-size: 14px; color: var(--muted); line-height: 1.5; }
+.after-steps { margin-top: 18px; font-size: 14px; color: var(--muted); max-width: 70ch; }
+
+/* ---------- diagrams */
+.diagram { overflow-x: auto; margin-inline: -4px; padding: 4px; }
+.diagram svg { display: block; width: 100%; min-width: 760px; height: auto; }
+.dg text { font-family: var(--f-body); }
+.dg .box { fill: var(--panel); stroke: var(--rule); stroke-width: 1.2; }
+.dg .box.acc { stroke: var(--accent); stroke-width: 1.6; }
+.dg .box.chain { stroke: var(--amber); stroke-width: 1.6; }
+.dg .box.dash { stroke-dasharray: 5 4; }
+.dg .frame { fill: none; stroke: var(--muted); stroke-opacity: 0.5; stroke-width: 1.2; stroke-dasharray: 6 5; }
+.dg .chip { fill: var(--chip); }
+.dg .chip.acc { fill: var(--accent-soft); }
+.dg .ln { stroke: var(--muted); stroke-width: 1.4; fill: none; }
+.dg .ln.acc { stroke: var(--accent); }
+.dg .ah { fill: var(--muted); }
+.dg .ah.acc { fill: var(--accent); }
+.dg .tt { font-size: 15px; font-weight: 600; fill: var(--ink); }
+.dg .tn { font-family: var(--f-mono); font-size: 13px; font-weight: 500; fill: var(--ink); }
+.dg .ts { font-size: 12px; fill: var(--muted); }
+.dg .tc { font-size: 12px; fill: var(--ink); }
+.dg .tl { font-family: var(--f-mono); font-size: 11px; fill: var(--muted); letter-spacing: 0.04em; }
+.dg .tl.acc { fill: var(--accent); }
+
+/* ---------- glossary */
+.gloss { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 36px; margin: 40px 0 0; }
+.gloss div { padding-block: 16px; border-top: 1px solid var(--rule); }
+.gloss dt { font-weight: 600; }
+.gloss dd { margin: 4px 0 0; color: var(--muted); font-size: 14.5px; line-height: 1.5; }
+.callout { margin-top: 32px; display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 20px; padding: 20px 22px; background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; }
+.callout h3 { font-size: 15px; }
+.callout p { color: var(--muted); font-size: 14.5px; }
+
+/* ---------- trust */
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; align-items: start; }
+.points { display: grid; gap: 20px; }
+.points div p { margin-top: 4px; color: var(--muted); font-size: 15px; }
+.tree-card { background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; }
+.tree-card .tc-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--rule); font-size: 13px; font-weight: 600; }
+.tree-scroll { overflow-x: auto; }
+.tree { margin: 0; padding: 14px 16px; font-family: var(--f-mono); font-size: 12.5px; line-height: 1.85; white-space: pre; color: var(--ink); }
+.tree .g { color: var(--muted); }
+.tree .h { color: var(--accent); }
+.tree .k { color: var(--ok); }
+.formulas { padding: 12px 16px; border-top: 1px dashed var(--rule); display: grid; gap: 4px; font-family: var(--f-mono); font-size: 12px; color: var(--muted); overflow-x: auto; }
+.formulas div { white-space: nowrap; }
+.formulas b { color: var(--ink); font-weight: 500; }
+.tree-card .note { padding: 10px 16px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--rule); }
+.scope { margin-top: 28px; font-size: 14px; color: var(--muted); max-width: 72ch; }
+
+/* ---------- markets */
+.mflow { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border: 1px solid var(--rule); border-radius: 12px; background: var(--panel); overflow: hidden; counter-reset: m; }
+.mflow li { padding: 18px; display: flex; flex-direction: column; gap: 8px; }
+.mflow li + li { border-left: 1px solid var(--rule); }
+.mflow .n { font-family: var(--f-mono); font-size: 12px; color: var(--amber); }
+.mflow .n::before { counter-increment: m; content: counter(m) " · "; }
+.mflow p { font-size: 14px; color: var(--muted); line-height: 1.5; }
+.rules { margin-top: 28px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 40px; }
+.rules p { font-size: 15px; color: var(--muted); }
+.rules b { color: var(--ink); font-weight: 600; }
+.boundary { margin-top: 36px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); border-radius: 12px; overflow: hidden; border: 1px solid var(--rule); }
+.boundary > div { padding: 20px 22px; }
+.boundary .bt { background: var(--accent-soft); }
+.boundary .sol { background: var(--amber-soft); }
+.boundary h3 { font-size: 15px; }
+.boundary .bt h3 { color: var(--accent); }
+.boundary .sol h3 { color: var(--amber); }
+.boundary ul { margin: 10px 0 0; padding-left: 18px; font-size: 14.5px; }
+.boundary li + li { margin-top: 4px; }
+.boundary .line { grid-column: 1 / -1; background: var(--panel); border-top: 1px solid var(--rule); padding: 14px 22px; font-weight: 600; font-size: 15px; }
+
+/* ---------- architecture */
+.svc-wrap { overflow-x: auto; margin-top: 40px; }
+.svc { width: 100%; border-collapse: collapse; font-size: 14.5px; min-width: 640px; }
+.svc th { text-align: left; font-weight: 500; font-size: 12px; color: var(--muted); font-family: var(--f-mono); letter-spacing: 0.05em; text-transform: uppercase; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--ink); }
+.svc td { padding: 12px 12px 12px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+.svc td:first-child { font-family: var(--f-mono); font-size: 13px; white-space: nowrap; }
+.svc td:nth-child(2) { color: var(--muted); white-space: nowrap; }
+.decisions { margin-top: 48px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px 36px; }
+.decisions div p { margin-top: 6px; color: var(--muted); font-size: 14.5px; line-height: 1.55; }
+
+/* ---------- status */
+.status { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; }
+.status h3 { display: flex; align-items: center; gap: 10px; }
+.pill { font-family: var(--f-mono); font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 999px; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.next { background: var(--chip); color: var(--muted); }
+.status ul { list-style: none; margin: 14px 0 0; padding: 0; }
+.status li { padding: 10px 0 10px 22px; border-top: 1px solid var(--rule); font-size: 15px; position: relative; }
+.status li::before { position: absolute; left: 0; top: 10px; font-family: var(--f-mono); font-size: 13px; }
+.status .done li::before { content: "✓"; color: var(--ok); }
+.status .todo li::before { content: "○"; color: var(--muted); }
+.status li span { display: block; color: var(--muted); font-size: 13.5px; }
+
+footer { border-top: 1px solid var(--rule); padding-block: 28px 48px; font-size: 13px; color: var(--muted); }
+footer code { font-size: 11.5px; }
+
+/* ---------- responsive */
+@media (max-width: 960px) {
+  .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mflow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mflow li:nth-child(3) { border-left: 0; }
+  .mflow li:nth-child(n+3) { border-top: 1px solid var(--rule); }
+  .decisions, .gloss { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 860px) {
+  .hero { grid-template-columns: minmax(0, 1fr); gap: 36px; }
+  .cols3 { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .two, .status, .rules { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+  section { padding-block: 52px; }
+  .steps, .mflow, .decisions, .gloss, .boundary { grid-template-columns: minmax(0, 1fr); }
+  .mflow li + li { border-left: 0; border-top: 1px solid var(--rule); }
+  .callout { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .rc-table td, .rc-table th { padding-inline: 6px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .rc-trace > * { animation: rise 0.22s ease-out; }
+  @keyframes rise { from { transform: translateY(4px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+}
+</style>
+</head>
+<body>
+
+<div class="page">
+
+<header class="top">
+  <a class="mark" href="#pitch">
+    <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="5" cy="21" r="3" fill="var(--accent)"/><circle cx="13" cy="13" r="3" fill="var(--accent)"/><circle cx="21" cy="5" r="3" fill="var(--amber)"/><path d="M5 21 L13 13 L21 5" stroke="var(--accent)" stroke-width="1.6" fill="none" stroke-dasharray="2 2.5"/></svg>
+    Backtrace
+  </a>
+  <nav aria-label="Sections">
+    <a href="#pitch">Pitch</a>
+    <a href="#journey">Journey</a>
+    <a href="#model">Model</a>
+    <a href="#trust">Receipts</a>
+    <a href="#markets">Future</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#status">Status</a>
+    <a href="/" class="app-link">Open the app →</a>
+  </nav>
+</header>
+
+<div class="hero" id="pitch">
+  <div>
+    <div class="eyebrow">HTB26 · a research tool with receipts</div>
+    <h1>Answers you can take apart.</h1>
+    <p class="lede">Dashboards and AI assistants hand you a number, but you can't see how it was made or check where it came from. In Backtrace you ask a question in plain English, agree with Claude on the shape of the answer, and get a result where every number traces back to the raw rows behind it.</p>
+    <p class="lede">When the answer changes over time, Backtrace offers to look into the future. The next value becomes an open question on an information exchange: people who know more move the odds, and everyone else gets a sharper view of what comes next. When the data is published, the same calculation settles it.</p>
+    <div class="journey-strip" aria-label="The journey">
+      <span>Ask</span><span>Shape</span><span>Data</span><span>Answer</span><span class="fut">Future</span>
+    </div>
+  </div>
+
+  <figure class="receipt" aria-label="Example result table with a receipt for each value">
+    <div class="rc-head">
+      <div>
+        <div class="rc-kind">Answer</div>
+        <div class="rc-title">Median flat price in Reading</div>
+        <div class="rc-grain">One row per year · GBP · HM Land Registry Price Paid</div>
+      </div>
+      <span class="fp" title="Instance fingerprint, re-computed and matched">✓ 3a9e1c04</span>
+    </div>
+    <table class="rc-table">
+      <thead><tr><th>Year</th><th class="num">Sales</th><th class="num">Median price</th></tr></thead>
+      <tbody id="rc-body">
+        <tr data-y="2023" tabindex="0"><td>2023</td><td class="num">1,212</td><td class="num">£228,000</td></tr>
+        <tr data-y="2024" tabindex="0"><td>2024</td><td class="num">1,147</td><td class="num">£222,500</td></tr>
+        <tr data-y="2025" tabindex="0" class="sel"><td>2025</td><td class="num">1,089</td><td class="num">£231,000</td></tr>
+        <tr data-y="2026" tabindex="0" class="future"><td>2026</td><td class="num"><span class="q">?</span></td><td class="num"><span class="q">?</span></td></tr>
+      </tbody>
+    </table>
+    <div class="rc-trace" id="rc-trace" aria-live="polite">
+      <ol class="trail">
+        <li><span class="lv">Value</span><span><b>£231,000</b>, the median of 1,089 sales</span></li>
+        <li><span class="lv">Step</span><span><code>reading_flat_sales</code> · property type = flat, year = 2025</span></li>
+        <li><span class="lv">Source</span><span>1,089 raw rows of <code>price_paid_reading</code>, batch <code>pp-2025.csv</code> · file sha256 <code>9f2c41ab</code></span></li>
+      </ol>
+    </div>
+    <figcaption>Click a row to see its receipt, or the 2026 row to see the future. Example figures and hashes.</figcaption>
+  </figure>
+</div>
+
+<section aria-labelledby="pitch-h">
+  <div class="sec-head">
+    <div class="eyebrow">The pitch</div>
+    <h2 id="pitch-h">A number is only as good as its working.</h2>
+  </div>
+  <div class="cols3">
+    <div class="col">
+      <h3>The problem</h3>
+      <p>Spreadsheets hide the working in cells, dashboards hide it in pipelines, and chat assistants hide it inside a model. To check an answer you have to rebuild it yourself, so most answers go unchecked.</p>
+    </div>
+    <div class="col key">
+      <h3>What Backtrace does</h3>
+      <p>It builds every answer as a chain of small, approved steps from public source data to the result. Claude proposes each step, and you approve, edit or comment. Every step is kept, so any number opens back up into the rows it came from.</p>
+    </div>
+    <div class="col">
+      <h3>Why it matters</h3>
+      <p>An answer that anyone can re-compute and check can be relied on by other people and other systems. That makes it a fair question to ask about the future: an exchange can commit to the exact calculation today, let people with better information move the odds, and settle on it when new data arrives.</p>
+    </div>
+  </div>
+</section>
+
+<section id="journey" aria-labelledby="journey-h">
+  <div class="sec-head">
+    <div class="eyebrow">The journey</div>
+    <h2 id="journey-h">Start with a question, not a dataset.</h2>
+    <p class="intro">One question is one thread. The chat floats beside a canvas that fills up as you go: the question, the tables that answer it, and the data they came from. The running example is <em>"Will the flat market in Reading grow next year?"</em></p>
+  </div>
+  <ol class="steps">
+    <li class="step"><span class="n">Ask</span><h3>Sharpen the question</h3><p>Claude restates it as parts you can edit: flats, Reading, median price, by year, year on year.</p></li>
+    <li class="step"><span class="n">Shape</span><h3>Agree the shape of the answer</h3><p>Columns, units, what one row means and the scope, with preview rows, so you see the table before any data exists.</p></li>
+    <li class="step"><span class="n">Data</span><h3>Find and load the data</h3><p>Claude works backwards from the answer to the data it needs, offers public datasets as cards, and loads the one you pick.</p></li>
+    <li class="step"><span class="n">Answer</span><h3>Evaluate and trace</h3><p>The chain runs, the table fills with real numbers and a verified fingerprint, and any value opens its receipt.</p></li>
+    <li class="step fut"><span class="n">Future</span><h3>Look into the future</h3><p>For a time series, the next period appears as an empty row. Open that cell as a question and watch the odds form.</p></li>
+  </ol>
+  <p class="after-steps">Each step is a proposal you approve, edit or discard. Turn on auto-accept to go straight to the answer and inspect the path afterwards. Follow-ups such as <em>"by postcode district"</em> become new tables in the same workspace, reusing what's already there.</p>
+</section>
+
+<section id="model" aria-labelledby="model-h">
+  <div class="sec-head">
+    <div class="eyebrow">The model</div>
+    <h2 id="model-h">One graph, three directions.</h2>
+    <p class="intro">Everything lives on one graph. A view is a table definition: its shape plus the transform that computes it. There is no final view, only views connected to each other. From any approved view you can go upstream, downstream, or to a visual.</p>
+  </div>
+
+  <div class="diagram">
+    <svg class="dg" viewBox="0 0 960 300" role="img" aria-labelledby="model-t">
+      <title id="model-t">A source view feeds reading_flat_sales through a filter, which feeds flat_median_by_year through a median-by-year step. From flat_median_by_year, a visual renders it as a line chart and a downstream view peak_year is derived from it.</title>
+      <defs>
+        <marker id="m-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
+        <marker id="m-acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah acc"/></marker>
+      </defs>
+
+      <text class="tl acc" x="20" y="44">UPSTREAM · HOW THE VIEW IS COMPUTED, DOWN TO DATA THAT EXISTS</text>
+      <path class="ln acc" d="M730 62 H22" marker-end="url(#m-acc)"/>
+
+      <rect class="box" x="20" y="110" width="170" height="60" rx="9"/>
+      <text class="tn" x="34" y="136">price_paid_reading</text>
+      <text class="ts" x="34" y="156">source · raw sales</text>
+
+      <path class="ln" d="M190 140 H288" marker-end="url(#m-a)"/>
+      <text class="tl" x="240" y="130" text-anchor="middle">filter</text>
+      <text class="tl" x="240" y="160" text-anchor="middle">flats</text>
+
+      <rect class="box" x="290" y="110" width="170" height="60" rx="9"/>
+      <text class="tn" x="304" y="136">reading_flat_sales</text>
+      <text class="ts" x="304" y="156">one row per sale</text>
+
+      <path class="ln" d="M460 140 H558" marker-end="url(#m-a)"/>
+      <text class="tl" x="510" y="130" text-anchor="middle">median</text>
+      <text class="tl" x="510" y="160" text-anchor="middle">by year</text>
+
+      <rect class="box acc" x="560" y="110" width="170" height="60" rx="9"/>
+      <text class="tn" x="572" y="136">flat_median_by_year</text>
+      <text class="ts" x="572" y="156">one row per year</text>
+
+      <path class="ln" d="M730 140 H788" marker-end="url(#m-a)"/>
+      <text class="tl" x="759" y="130" text-anchor="middle">visual</text>
+      <rect class="box dash" x="790" y="110" width="150" height="60" rx="9"/>
+      <text class="tt" x="804" y="136">Line chart</text>
+      <text class="ts" x="804" y="156">agent-written HTML</text>
+
+      <path class="ln" d="M645 170 V218" marker-end="url(#m-a)"/>
+      <text class="tl" x="655" y="199">downstream</text>
+      <rect class="box" x="560" y="220" width="170" height="60" rx="9"/>
+      <text class="tn" x="574" y="246">peak_year</text>
+      <text class="ts" x="574" y="266">one row: the highest year</text>
+
+      <text class="ts" x="20" y="206">Every arrow is a transform: a pure</text>
+      <text class="ts" x="20" y="224">function from input rows to output rows,</text>
+      <text class="ts" x="20" y="242">each output row tagged with the ids</text>
+      <text class="ts" x="20" y="260">of the rows it came from.</text>
+    </svg>
+  </div>
+
+  <dl class="gloss">
+    <div><dt>View</dt><dd>A table definition: its shape plus the transform that computes it. A raw dataset is a source view.</dd></div>
+    <div><dt>Shape</dt><dd>JSON Schema for one row with roles and units, plus the grain (what one row is) and the scope, e.g. "Reading, flats, 2023–2025".</dd></div>
+    <div><dt>Transform</dt><dd>Deterministic (filter, derive, aggregate, or Python) or agentic (Claude classifies, infers or summarises, with schemas as structured input and output).</dd></div>
+    <div><dt>Visual</dt><dd>HTML written by the agent that renders a view, in a sandboxed floating window. Click a point to trace it.</dd></div>
+    <div><dt>Instance</dt><dd>One evaluation of a view. It pins the exact shape, transform and input instances it used.</dd></div>
+    <div><dt>Record</dt><dd>One row of an instance, linked to the source rows it came from.</dd></div>
+  </dl>
+
+  <div class="callout">
+    <h3>Append-only versioning</h3>
+    <p>Proposals are never edited. A revision is a new node that points at its parent, and alternatives are siblings. Each approval increments a global counter, and the approved version with the highest counter is current. Discarded proposals stay on the graph, so you can replay the reasoning next to the data lineage.</p>
+  </div>
+</section>
+
+<section id="trust" aria-labelledby="trust-h">
+  <div class="sec-head">
+    <div class="eyebrow">Receipts</div>
+    <h2 id="trust-h">Every number has a receipt.</h2>
+    <p class="intro">Two things make an answer checkable: lineage, which says where each number came from, and fingerprints, which prove nothing changed along the way.</p>
+  </div>
+  <div class="two">
+    <div class="points">
+      <div><h3>Lineage down to the raw rows</h3><p>Every output row carries <code>_src</code>, the ids of the rows it was made from. Trace walks back one level at a time, from a value to the sales behind it to the raw Land Registry records.</p></div>
+      <div><h3>Fingerprints for the whole chain</h3><p>Each table's fingerprint covers its formula, a Merkle root of its rows and the fingerprints of its inputs. The final table's fingerprint therefore commits to every step down to the source files.</p></div>
+      <div><h3>Verify re-runs it</h3><p>Verify recomputes the chain from the stored inputs and compares every hash, then shows the tree. A notebook view lays out each step as readable pandas code, and the chain exports as a script that rebuilds the result from the source CSVs.</p></div>
+      <div><h3>AI steps are marked</h3><p>An agentic step can be replayed but not recomputed, so it is fingerprinted by its stored output and flagged in the verify report. Questions about the future can't be built on chains with AI steps.</p></div>
+    </div>
+    <div class="tree-card">
+      <div class="tc-head"><span>Verify report</span><span class="fp">✓ all hashes match</span></div>
+      <div class="tree-scroll"><pre class="tree"><span class="h">flat_median_by_year</span>        instance 3a9e1c04  <span class="k">✓</span>
+<span class="g">├─</span> formula                  shape · transform · engine
+<span class="g">├─</span> data root                Merkle root of 4 rows
+<span class="g">└─</span> <span class="h">reading_flat_sales</span>       instance 51b0e7aa  <span class="k">✓</span>
+   <span class="g">└─</span> <span class="h">price_paid_reading</span>    snapshot c8d4f210  <span class="k">✓</span>
+      <span class="g">├─</span> batch 1   pp-2025.csv  sha256 9f2c41ab
+      <span class="g">└─</span> batch 2   pp-2026.csv  sha256 e03b77d5</pre></div>
+      <div class="formulas">
+        <div><b>instance</b> = H(formula, data root, input instances)</div>
+        <div><b>batch</b>    = H(recipe, file sha256, data root)</div>
+      </div>
+      <div class="note">Example hashes. Rows are hashed in canonical form: sorted keys, fixed float rounding, ISO dates.</div>
+    </div>
+  </div>
+  <p class="scope">The hashes prove the computation is faithful to the data. They don't prove the publisher's data is authentic; anyone can re-download the source file and compare its sha256.</p>
+</section>
+
+<section id="markets" aria-labelledby="markets-h">
+  <div class="sec-head">
+    <div class="eyebrow amber">Information exchange</div>
+    <h2 id="markets-h">Would you like to look into the future?</h2>
+    <p class="intro">The future can be defined as precisely as the past. The empty 2026 row will be filled by exactly the same calculation as the rows above. Until then it is an open question: anyone who knows something about it can back their view, and the odds show everyone what the best-informed people expect.</p>
+  </div>
+  <ol class="mflow">
+    <li><span class="n">The empty row</span><h3>The data stops here</h3><p>A time series gains a next-period row with a value of "?". A simple trend line shows what a naive guess looks like.</p></li>
+    <li><span class="n">Ask</span><h3>A question about one cell</h3><p>The target row and column, a condition such as "at least the 2025 median", an end date, and the pinned formula it commits to.</p></li>
+    <li><span class="n">Exchange</span><h3>Information moves the odds</h3><p>People who know more, such as a local estate agent or an analyst, back YES or NO. Each position moves the odds, so the live probability becomes everyone's best estimate. It runs on Solana with test tokens.</p></li>
+    <li><span class="n">Settle</span><h3>Settled by data</h3><p>After the end date the api re-runs the pinned chain on the latest data, verifies it, compares with the line and resolves with the evidence.</p></li>
+  </ol>
+  <div class="rules">
+    <p><b>The odds are worth reading.</b> Being right pays and being wrong costs, so the odds lean toward whoever has the better information. Insight that isn't in the data yet shows up in the price.</p>
+    <p><b>Only fixed calculations can back a question.</b> Every step from the sources must be approved and deterministic. An AI step blocks creation, because its output can't be recomputed.</p>
+    <p><b>Open questions stay pinned.</b> Revising the view later changes what you explore, not what an open question settles on. No row at settlement means it is void.</p>
+    <p><b>The evidence is published.</b> Settlement posts the value, the row, the instance fingerprint and the source files with the outcome, so anyone can recompute it.</p>
+  </div>
+  <div class="boundary">
+    <div class="bt">
+      <h3>Backtrace owns</h3>
+      <ul>
+        <li>What a question is about: the view, row, column and line</li>
+        <li>The pinned calculation and its formula hash</li>
+        <li>Whether and how it resolved, with the evidence</li>
+      </ul>
+    </div>
+    <div class="sol">
+      <h3>Solana owns</h3>
+      <ul>
+        <li>The exchange itself: YES and NO order books (OpenBook v2)</li>
+        <li>Collateral: complete YES + NO sets backed by mUSDC test tokens</li>
+        <li>Payout to whoever was right; a void question pays 0.5</li>
+      </ul>
+    </div>
+    <div class="line">Backtrace never moves funds, and the chain never computes data.</div>
+  </div>
+</section>
+
+<section id="architecture" aria-labelledby="arch-h">
+  <div class="sec-head">
+    <div class="eyebrow">Architecture</div>
+    <h2 id="arch-h">Small services, one source of truth.</h2>
+    <p class="intro">The graph is the only state. One api exposes every operation to both Claude and the browser, rows live in Postgres, and the market runs on its own Rust backend and Solana. Everything ships as one Docker Compose stack.</p>
+  </div>
+
+  <div class="diagram">
+    <svg class="dg" viewBox="0 0 1000 700" role="img" aria-labelledby="arch-t">
+      <title id="arch-t">The browser's web app reaches Caddy over HTTPS. Caddy routes /api to the FastAPI api and /pm-api to the Rust market backend. The api uses Memgraph, a hosted Postgres data plane and the Claude API, and calls the market backend to create and resolve markets. The market backend uses its own hosted Postgres and Solana devnet. The wallet signs positions directly on Solana.</title>
+      <defs>
+        <marker id="m-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
+      </defs>
+
+      <!-- browser -->
+      <text class="tl" x="30" y="58">BROWSER</text>
+      <rect class="box" x="170" y="20" width="390" height="90" rx="10"/>
+      <text class="tt" x="190" y="48">Web app</text>
+      <text class="ts" x="258" y="48">React · Vite · React Flow</text>
+      <rect class="chip acc" x="190" y="66" width="86" height="26" rx="6"/><text class="tc" x="233" y="83" text-anchor="middle">Research</text>
+      <rect class="chip" x="284" y="66" width="66" height="26" rx="6"/><text class="tc" x="317" y="83" text-anchor="middle">Graph</text>
+      <rect class="chip" x="358" y="66" width="96" height="26" rx="6"/><text class="tc" x="406" y="83" text-anchor="middle">Predictions</text>
+
+      <rect class="box chain" x="620" y="20" width="240" height="90" rx="10"/>
+      <text class="tt" x="640" y="48">Wallet</text>
+      <text class="ts" x="640" y="70">burner or browser wallet,</text>
+      <text class="ts" x="640" y="88">signs its own positions</text>
+
+      <!-- server frame -->
+      <rect class="frame" x="30" y="140" width="890" height="410" rx="14"/>
+      <text class="tl" x="46" y="166">VPS · DOCKER COMPOSE</text>
+
+      <path class="ln" d="M365 110 V178" marker-end="url(#m-b)"/>
+      <text class="tl" x="373" y="150">HTTPS</text>
+
+      <rect class="box" x="170" y="180" width="610" height="56" rx="10"/>
+      <text class="tt" x="190" y="213">Caddy</text>
+      <text class="ts" x="250" y="213">HTTPS · access-code gate · serves the built web app</text>
+
+      <path class="ln" d="M280 236 V278" marker-end="url(#m-b)"/>
+      <text class="tl" x="288" y="262">/api</text>
+      <path class="ln" d="M745 236 V278" marker-end="url(#m-b)"/>
+      <text class="tl" x="753" y="262">/pm-api</text>
+
+      <!-- api -->
+      <rect class="box acc" x="60" y="280" width="440" height="150" rx="10"/>
+      <text class="tt" x="80" y="308">api</text>
+      <text class="ts" x="112" y="308">FastAPI · one ops registry → MCP tools + REST</text>
+      <rect class="chip" x="76" y="326" width="200" height="34" rx="6"/><text class="tc" x="176" y="347" text-anchor="middle">Executor · hashes · verify</text>
+      <rect class="chip" x="284" y="326" width="200" height="34" rx="6"/><text class="tc" x="384" y="347" text-anchor="middle">Research worker → app agent</text>
+      <rect class="chip" x="76" y="370" width="200" height="34" rx="6"/><text class="tc" x="176" y="391" text-anchor="middle">Notebook · pandas export</text>
+      <rect class="chip" x="284" y="370" width="200" height="34" rx="6"/><text class="tc" x="384" y="391" text-anchor="middle">Market drafts &amp; settlement</text>
+
+      <!-- api -> market backend -->
+      <path class="ln" d="M500 355 H598" marker-end="url(#m-b)"/>
+      <text class="tl" x="550" y="343" text-anchor="middle">create</text>
+      <text class="tl" x="550" y="373" text-anchor="middle">resolve</text>
+
+      <!-- market backend -->
+      <rect class="box chain" x="600" y="280" width="290" height="150" rx="10"/>
+      <text class="tt" x="620" y="308">Market backend</text>
+      <text class="ts" x="745" y="308">Rust · axum</text>
+      <rect class="chip" x="614" y="326" width="129" height="34" rx="6"/><text class="tc" x="678.5" y="347" text-anchor="middle">Create &amp; seed</text>
+      <rect class="chip" x="751" y="326" width="129" height="34" rx="6"/><text class="tc" x="815.5" y="347" text-anchor="middle">Market-making bots</text>
+      <rect class="chip" x="614" y="370" width="129" height="34" rx="6"/><text class="tc" x="678.5" y="391" text-anchor="middle">Faucet · mUSDC</text>
+      <rect class="chip" x="751" y="370" width="129" height="34" rx="6"/><text class="tc" x="815.5" y="391" text-anchor="middle">Resolve</text>
+
+      <!-- memgraph -->
+      <path class="ln" d="M160 430 V468" marker-end="url(#m-b)"/>
+      <text class="tl" x="168" y="454">Bolt</text>
+      <rect class="box" x="60" y="470" width="200" height="60" rx="10"/>
+      <text class="tt" x="80" y="496">Memgraph</text>
+      <text class="ts" x="80" y="516">control plane: the graph</text>
+
+      <!-- hosted row -->
+      <text class="tl" x="60" y="622">HOSTED</text>
+      <text class="ts" x="60" y="642">outside the VPS</text>
+
+      <path class="ln" d="M315 430 V588" marker-end="url(#m-b)"/>
+      <rect class="box" x="240" y="590" width="150" height="90" rx="10"/>
+      <text class="tt" x="256" y="616">Postgres</text>
+      <text class="ts" x="256" y="636">data plane: every</text>
+      <text class="ts" x="256" y="654">row + its lineage</text>
+
+      <path class="ln" d="M475 430 V588" marker-end="url(#m-b)"/>
+      <rect class="box" x="410" y="590" width="130" height="90" rx="10"/>
+      <text class="tt" x="426" y="616">Claude API</text>
+      <text class="ts" x="426" y="636">app agent</text>
+      <text class="ts" x="426" y="654">and AI steps</text>
+
+      <path class="ln" d="M670 430 V588" marker-end="url(#m-b)"/>
+      <rect class="box" x="600" y="590" width="140" height="90" rx="10"/>
+      <text class="tt" x="616" y="616">Postgres</text>
+      <text class="ts" x="616" y="636">markets, rules</text>
+      <text class="ts" x="616" y="654">and evidence</text>
+
+      <path class="ln" d="M840 430 V588" marker-end="url(#m-b)"/>
+      <rect class="box chain" x="760" y="590" width="160" height="90" rx="10"/>
+      <text class="tt" x="776" y="616">Solana devnet</text>
+      <text class="ts" x="776" y="636">Anchor program</text>
+      <text class="ts" x="776" y="654">OpenBook v2 books</text>
+
+      <!-- wallet -> solana -->
+      <path class="ln" d="M860 65 H965 V635 H922" marker-end="url(#m-b)"/>
+    </svg>
+  </div>
+
+  <div class="svc-wrap">
+    <table class="svc">
+      <thead><tr><th>Part</th><th>Built with</th><th>Job</th></tr></thead>
+      <tbody>
+        <tr><td>web</td><td>React, Vite, React Flow</td><td>Research canvas with a floating chat, the full Graph view, and the Predictions tab, where people back their forecasts. In production Caddy serves the built app.</td></tr>
+        <tr><td>api</td><td>Python 3.12, FastAPI</td><td>Every operation is one typed function, exposed as an MCP tool and as REST. Runs evaluation, lineage, hashing and verify, the notebook, the research worker, and market drafting and settlement.</td></tr>
+        <tr><td>app agent</td><td>Claude Agent SDK</td><td>Claude (Haiku 5.5 by default; Sonnet 5.5 or Opus 5.5 per workspace) with skills for each stage: serve-intent, question-to-shape, reverse-step, find-dataset, evaluate-trace, propose-visual, derive-downstream. It works only through the api's tools.</td></tr>
+        <tr><td>memgraph</td><td>Memgraph</td><td>The control plane: views, proposals, intents and messages, instance manifests and hashes. Kept small.</td></tr>
+        <tr><td>postgres</td><td>hosted Postgres</td><td>The data plane: append-only raw batches, derived tables and record lineage. Row stores are pluggable; Memgraph records work too.</td></tr>
+        <tr><td>market backend</td><td>Rust, axum, sqlx</td><td>Creates markets and seeds both books, runs the market maker and taker bots, the faucet and resolution. Keeps market rules and settlement evidence.</td></tr>
+        <tr><td>program</td><td>Anchor on Solana</td><td>mUSDC collateral, minting and merging YES + NO sets, admin resolution and redemption, with OpenBook v2 for the order books.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="decisions">
+    <div><h3>The graph is the only state</h3><p>Chat messages, dataset choices and market drafts are graph nodes too, so the web UI, MCP clients and the terminal all see the same thread. The agent re-reads the graph every turn instead of trusting its memory.</p></div>
+    <div><h3>One registry, two interfaces</h3><p>Claude and the browser call the same operations. Anything the agent can do, the UI can do, and the reverse.</p></div>
+    <div><h3>The agent proposes, you decide</h3><p>Nothing becomes current without approval unless auto-accept is on. Every proposal carries a one-line rationale the UI shows.</p></div>
+    <div><h3>Control plane and data plane</h3><p>Memgraph keeps definitions, decisions and hashes. Postgres keeps the rows, where a trigger rejects updates and deletes on raw data.</p></div>
+    <div><h3>Deterministic where it counts</h3><p>Declarative ops can be replayed exactly. Agentic steps are stored and marked, and are kept out of anything a market settles on.</p></div>
+    <div><h3>Easy to run</h3><p>Docker Compose locally. In production, the same stack with overrides on one VPS: Caddy for HTTPS and the access code, hosted Postgres, and Solana devnet.</p></div>
+  </div>
+</section>
+
+<section id="status" aria-labelledby="status-h">
+  <div class="sec-head">
+    <div class="eyebrow">Status</div>
+    <h2 id="status-h">Where it stands.</h2>
+  </div>
+  <div class="status">
+    <div class="done">
+      <h3>Working today <span class="pill ok">built</span></h3>
+      <ul>
+        <li>Question → shape → data → answer, end to end<span>Research canvas with a floating chat, diffs drawn on tables, auto-accept per workspace</span></li>
+        <li>Curated public datasets<span>HM Land Registry Price Paid and US airline on-time performance, loaded on demand</span></li>
+        <li>Postgres data plane with fingerprints and verify<span>Hash trees over every chain, a notebook view and a pandas export, a Python escape hatch</span></li>
+        <li>Markets made from a table and settled by data<span>Checks that the chain is deterministic, pins it, settles every 20 seconds once due</span></li>
+        <li>An on-chain information exchange on Solana devnet<span>YES and NO order books, market-making bots, a burner wallet and a faucet</span></li>
+        <li>Deployed on a VPS<span>HTTPS through Caddy, behind an access code</span></li>
+      </ul>
+    </div>
+    <div class="todo">
+      <h3>Next <span class="pill next">planned</span></h3>
+      <ul>
+        <li>Anchor the commitment on-chain<span>A spec hash at market creation and a proof hash at resolution, so anyone can check the payout against the formula</span></li>
+        <li>Separate the end of forecasting from resolve-after<span>Land Registry publishes weeks after a period ends</span></li>
+        <li>Compile ops to SQL<span>Big tables never leave Postgres; lineage through <code>array_agg</code></span></li>
+        <li>More recipes<span>Postgres queries and HTTP APIs as sources, alongside files</span></li>
+        <li>Trust beyond one admin key<span>A dispute window, or several independent resolvers</span></li>
+        <li>Live dataset search<span>Beyond the curated catalog</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer>
+  Backtrace, built for HTB26. Sources: <code>BRIEF.md</code>, <code>docs/BRIEF-flow.md</code>, <code>docs/BRIEF-markets.md</code>, <code>docs/BRIEF-data-plane.md</code>, <code>docs/SPEC.md</code> and <code>prediction-market/README.md</code>. Figures and hashes on this page are examples.
+</footer>
+
+</div>
+
+<script>
+(function () {
+  var rows = {
+    "2023": { price: "£228,000", n: "1,212", file: "pp-2023.csv", sha: "41d7a0c3" },
+    "2024": { price: "£222,500", n: "1,147", file: "pp-2024.csv", sha: "b85e19f2" },
+    "2025": { price: "£231,000", n: "1,089", file: "pp-2025.csv", sha: "9f2c41ab" }
+  };
+  var body = document.getElementById("rc-body");
+  var trace = document.getElementById("rc-trace");
+  if (!body || !trace) return;
+
+  function receipt(y) {
+    var r = rows[y];
+    return '<ol class="trail">' +
+      '<li><span class="lv">Value</span><span><b>' + r.price + '</b>, the median of ' + r.n + ' sales</span></li>' +
+      '<li><span class="lv">Step</span><span><code>reading_flat_sales</code> · property type = flat, year = ' + y + '</span></li>' +
+      '<li><span class="lv">Source</span><span>' + r.n + ' raw rows of <code>price_paid_reading</code>, batch <code>' + r.file + '</code> · file sha256 <code>' + r.sha + '</code></span></li>' +
+      '</ol>';
+  }
+  function future() {
+    return '<p class="future-note">The data stops here. This cell will be filled when Land Registry publishes the 2026 sales, using exactly the same calculation as the rows above. Until then, the odds show what people who know the market expect.</p>' +
+      '<div class="mkt"><div class="mq">Will Reading’s 2026 median flat price be at least £231,000?</div>' +
+      '<div class="mrow"><span class="chance">crowd odds: 54% yes</span><span class="pin">settled by data · formula 7c1d02e9</span></div></div>';
+  }
+  function select(tr) {
+    var all = body.querySelectorAll("tr");
+    for (var i = 0; i < all.length; i++) all[i].classList.remove("sel");
+    tr.classList.add("sel");
+    var y = tr.getAttribute("data-y");
+    trace.innerHTML = rows[y] ? receipt(y) : future();
+  }
+  body.addEventListener("click", function (e) {
+    var tr = e.target.closest("tr");
+    if (tr) select(tr);
+  });
+  body.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    var tr = e.target.closest("tr");
+    if (tr) { e.preventDefault(); select(tr); }
+  });
+})();
+</script>
+</body>
+</html>

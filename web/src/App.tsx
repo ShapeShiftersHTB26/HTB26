@@ -42,6 +42,8 @@ export default function App() {
       <a href="#/predictions" className={tab === "predictions" ? "active" : ""}>Predictions</a>
       {/* ADHD tab hidden from the nav; the page still opens at #/adhd (the link shows only while you're on it) */}
       {tab === "adhd" && <a href="#/adhd" className="adhd-tab active">ADHD</a>}
+      {/* static explainer page (web/public/about.html), outside the hash-routed app */}
+      <a href="/about.html">About</a>
     </nav>
   );
 
