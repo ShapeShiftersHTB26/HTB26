@@ -9,7 +9,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from mcp.server.fastmcp import FastMCP
 
-from . import graph, ops, pg, thread  # noqa: F401  (imports register operations)
+from . import graph, markets, ops, pg, thread  # noqa: F401  (imports register operations)
 from . import worker as thread_worker
 from .registry import REGISTRY, REST_ONLY
 
@@ -40,10 +40,12 @@ async def lifespan(_app: FastAPI):
     except Exception as e:  # noqa: BLE001  (api still starts; ping reports postgres down)
         print(f"postgres not ready: {e}")
     worker = asyncio.create_task(thread_worker.loop()) if thread_worker.ENABLED else None
+    settler = asyncio.create_task(markets.loop()) if markets.ENABLED else None  # data-settled markets past their end
     async with mcp.session_manager.run():
         yield
-    if worker:
-        worker.cancel()
+    for task in (worker, settler):
+        if task:
+            task.cancel()
 
 
 app = FastAPI(title="backtrace", lifespan=lifespan)

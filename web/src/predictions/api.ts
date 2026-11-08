@@ -38,6 +38,58 @@ export interface MarketInfo {
   resolved_at: string | null;
   yes_book: OrderbookRow | null;
   no_book: OrderbookRow | null;
+  /** Set for markets settled by data (Backtrace): the rule, plus `settlement` once resolved. */
+  resolution?: DataRule | null;
+}
+
+/** "YES if <column> for <where> in <view> is <op> <threshold>", settled by a pinned Backtrace calculation. */
+export interface DataRule {
+  source: "backtrace";
+  view_id: string;
+  view_name: string;
+  where: Record<string, string | number>;
+  column: string;
+  unit: string | null;
+  op: ">" | ">=" | "<" | "<=";
+  threshold: number;
+  if_missing: "void";
+  formula_hash: string;
+  intent_id?: string | null;
+  created_from: { instance_id: string; hash: string; value: number | null; files: string[] };
+  settlement?: Settlement;
+}
+
+export interface DataSourceInfo {
+  view_id: string;
+  name: string;
+  files: string[];
+  rows: number;
+  hash: string;
+}
+
+export interface Settlement {
+  value: number | null;
+  reason: string;
+  instance_id: string;
+  hash: string;
+  formula_hash: string;
+  verified: boolean;
+  data: DataSourceInfo[];
+  settled_at: string;
+  row: Record<string, unknown> | null;
+}
+
+/** A data-settled market's number on today's data (Backtrace api, market_status). */
+export interface DataStatus {
+  market_id: number;
+  status: string;
+  value?: number | null;
+  would_settle?: "yes" | "no" | "void";
+  history?: [string | number, number][];
+  time_column?: string | null;
+  instance?: { id: string; hash: string; created_at: string };
+  data?: DataSourceInfo[];
+  error?: string;
 }
 
 export interface BotTrade {
@@ -56,6 +108,19 @@ export interface CreateMarketInput {
   resolution_time: string; // ISO
   initial_price_cents?: number;
 }
+
+/** Backtrace api ops for data-settled markets (the Vite proxy sends /api to the api service). */
+async function op<T>(name: string, args: Record<string, unknown>): Promise<T> {
+  const res = await fetch(`/api/op/${name}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(args) });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.detail ?? `HTTP ${res.status}`);
+  return body as T;
+}
+
+export const dataApi = {
+  status: (id: number) => op<DataStatus>("market_status", { market_id: id }),
+  settle: (id: number) => op<{ outcome: string; tx?: string }>("settle_market", { market_id: id }),
+};
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${PM_API}${path}`, {

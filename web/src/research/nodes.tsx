@@ -1,8 +1,10 @@
 import { Handle, NodeProps, Position } from "@xyflow/react";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Column, columns, Dataset, op, Proposal } from "../api";
 import VerifyReport from "../VerifyReport";
 import { useThread } from "./ctx";
+import MarketDraft from "./MarketDraft";
 
 export type CanvasView = {
   id: string;
@@ -114,10 +116,10 @@ function fmt(v: any, c?: Column) {
 
 export function TableNode({ data }: NodeProps) {
   const v = data.view as CanvasView;
-  const { t, send, focus, onOpenVisual, onTrace } = useThread();
+  const { t, send, reload, focus, onOpenVisual, onTrace } = useThread();
   const { busy, act } = useAct();
   const [rows, setRows] = useState<Record<string, any>[] | null>(null);
-  const [others, setOthers] = useState(false);
+  const [market, setMarket] = useState(false);
   const iid = v.instance?.id;
   useEffect(() => {
     if (!iid) return setRows(null);
@@ -138,6 +140,9 @@ export function TableNode({ data }: NodeProps) {
   const removed = cols.filter((c) => c.st === "removed").length;
   const isNew = !!pend && !head;
   const names = (ids: string[]) => ids.map((i) => t.names[i] || i).join(", ");
+  // a computed table with a number on it can become a prediction market settled by its own calculation
+  const canMarket =
+    real && v.kind === "derived" && columns(head?.schema).some((c) => c.role === "measure" && (c.type === "number" || c.type === "integer"));
 
   return (
     <div className={`rnode table ${v.kind} ${isNew ? "proposed" : ""} ${v.answer ? "answer" : ""} ${focus === v.id ? "focused" : ""}`}>
@@ -216,11 +221,31 @@ export function TableNode({ data }: NodeProps) {
             <button onClick={() => send(`Estimate ${future.col} ${future.next} from historicals for ${v.name}.`, "chat", [v.id])}>
               Estimate from historicals
             </button>
-            <button onClick={() => setOthers(true)}>Ask others</button>
+            {canMarket && (
+              <button className="approve" onClick={() => setMarket(true)} title="A YES/NO market on this row, settled by this exact calculation">
+                Ask the market
+              </button>
+            )}
           </div>
-          {others && <div className="note-inline">Coming next: a prediction market on this row, settled by this exact calculation.</div>}
         </div>
       )}
+      {canMarket && !future && (
+        <div className="tn-market nodrag">
+          <button onClick={() => setMarket(true)}>Make it a market</button>
+          <span className="muted small">a YES/NO bet on a number here, settled by this calculation</span>
+        </div>
+      )}
+      {market &&
+        createPortal(
+          <MarketDraft
+            viewId={v.id}
+            intentId={t.intent.id}
+            initialWhere={future ? { [future.col]: future.next } : undefined}
+            onClose={() => setMarket(false)}
+            onCreated={() => reload()}
+          />,
+          document.body,
+        )}
 
       {pend && (
         <div className="tn-proposal nodrag">

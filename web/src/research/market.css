@@ -1,0 +1,77 @@
+/* "Make it a prediction market" dialog (MarketDraft.tsx). Uses the app tokens from style.css. */
+.mk-backdrop {
+  position: fixed; inset: 0; z-index: 100; background: rgba(20, 20, 30, 0.35);
+  display: flex; align-items: flex-start; justify-content: center; padding: 6vh 16px; overflow-y: auto;
+  animation: mk-fade 0.15s ease-out;
+}
+.mk-modal {
+  width: 100%; max-width: 640px; background: var(--panel); border-radius: 14px; border: 1px solid var(--line);
+  box-shadow: 0 24px 60px rgba(20, 20, 40, 0.18); display: flex; flex-direction: column; max-height: 88vh;
+  animation: mk-rise 0.18s ease-out;
+}
+@keyframes mk-fade { from { opacity: 0; } }
+@keyframes mk-rise { from { opacity: 0; transform: translateY(8px); } }
+.mk-head { display: flex; align-items: flex-start; gap: 12px; padding: 16px 20px 12px; border-bottom: 1px solid var(--line); }
+.mk-head > div { flex: 1; min-width: 0; }
+.mk-head h3 { margin: 0 0 2px; font-size: 18px; }
+.mk-x { border: none; background: none; font-size: 22px; line-height: 1; padding: 2px 6px; color: var(--muted); }
+.mk-body { padding: 14px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+.mk-body section { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.mk-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.mk-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mk-key { display: inline-flex; align-items: center; gap: 4px; }
+.mk-body select, .mk-body input[type="datetime-local"] {
+  font: inherit; border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; background: var(--panel); max-width: 100%;
+}
+.mk-question { font: inherit; font-size: 15px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; resize: vertical; width: 100%; }
+.mk-question:focus, .mk-body select:focus, .mk-body input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+.mk-link { border: none; background: none; padding: 0; color: var(--accent); font-size: 13px; align-self: flex-start; }
+.mk-now { color: var(--muted); }
+.mk-now b { color: var(--ink); }
+.dspark { width: 100%; height: auto; display: block; margin-top: 2px; --dspark-ink: var(--accent); --dspark-line: var(--warn); --dspark-muted: var(--muted); --dspark-bg: var(--panel); }
+
+.mk-seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.mk-seg button { border: none; border-radius: 0; padding: 5px 10px; background: var(--panel); }
+.mk-seg button + button { border-left: 1px solid var(--line); }
+.mk-seg button.on { background: var(--accent); color: white; }
+.mk-num { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 8px; padding: 2px 8px; }
+.mk-num:focus-within { border-color: var(--accent); }
+.mk-num input { border: none; width: 9ch; font-weight: 600; padding: 3px 0; outline: none; }
+.mk-slider { width: 100%; accent-color: var(--accent); }
+.mk-row input[type="range"] { flex: 1; accent-color: var(--accent); }
+.mk-pct { min-width: 3.5ch; text-align: right; }
+.mk-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.mk-chips button { font-size: 13px; padding: 2px 10px; border-radius: 12px; }
+.mk-chips button.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.mk-two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 560px) { .mk-two { grid-template-columns: 1fr; } }
+
+.mk-checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.mk-checks li { display: flex; gap: 8px; align-items: flex-start; padding: 6px 10px; border-radius: 8px; line-height: 1.35; }
+.mk-checks li.ok { background: var(--ok-soft); }
+.mk-checks li.warn { background: var(--warn-soft); }
+.mk-checks li.error { background: #fdecea; }
+.mk-ico { flex: none; width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: white; margin-top: 1px; }
+.mk-checks li.ok .mk-ico { background: var(--ok); }
+.mk-checks li.warn .mk-ico { background: var(--warn); }
+.mk-checks li.error .mk-ico { background: var(--bad); }
+.mk-spin { width: 10px; height: 10px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: mk-turn 0.7s linear infinite; }
+@keyframes mk-turn { to { transform: rotate(360deg); } }
+.mk-rules summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.mk-rules p { white-space: pre-line; font-size: 13px; background: var(--bg); border-radius: 8px; padding: 10px 12px; margin: 8px 0 0; }
+
+.mk-foot { display: flex; align-items: center; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--line); }
+.mk-foot .grow { flex: 1; min-width: 0; }
+.mk-primary { background: var(--accent); color: white; border: 1px solid var(--accent); border-radius: 6px; padding: 6px 16px; font-weight: 600; text-decoration: none; }
+.mk-primary:disabled { opacity: 0.5; }
+.mk-done { align-items: center; text-align: center; padding-top: 28px; }
+.mk-done .mk-foot { border-top: none; justify-content: center; width: 100%; }
+.mk-done-mark { width: 48px; height: 48px; border-radius: 50%; background: var(--ok); color: white; font-size: 26px; display: flex; align-items: center; justify-content: center; }
+.mk-done-title { font-size: 18px; font-weight: 600; margin: 4px 0 0; }
+.mk-done-q { margin: 0; font-size: 15px; }
+
+/* entry point on a table node */
+.tn-market { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.tn-market button { border-color: var(--accent); color: var(--accent); }
+.tn-market button:hover { background: var(--accent-soft); }
+.dspark svg { display: block; }

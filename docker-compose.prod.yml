@@ -21,3 +21,7 @@ services:
       BOOTSTRAP_ON_START: "true"   # idempotent: creates the mUSDC mint + program Config if missing
     volumes: !override
       - ./prediction-market/keys:/keys   # admin.json + musdc-mint.json (scripts/setup.sh writes them)
+
+  api:
+    environment:   # the api opens + settles data-settled markets through the backend's admin endpoints
+      PM_ADMIN_KEY: ${PM_ADMIN_KEY:?set PM_ADMIN_KEY in .env to ADMIN_API_KEY from prediction-market/.env.prod}

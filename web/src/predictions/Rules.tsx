@@ -25,13 +25,16 @@ export default function Rules({ m }: { m: MarketInfo }) {
     <div className="pm-rules">
       <p>{m.description || "No extra resolution rules were given for this market."}</p>
       <p className="pm-muted pm-small">
-        After trading closes, the operator resolves the market Yes, No or Void. Winning shares redeem for $1 each; if it's
-        voided, every share redeems for 50¢.
+        {m.resolution?.source === "backtrace"
+          ? "After trading closes, Backtrace re-runs the calculation pinned when the market opened, on the data published by then, checks its fingerprint and posts Yes, No or Void with the evidence. Nobody decides it by hand."
+          : "After trading closes, the operator resolves the market Yes, No or Void."}{" "}
+        Winning shares redeem for $1 each; if it's voided, every share redeems for 50¢.
       </p>
       <div className="pm-kvs">
         {row("Closes", dateLabel(m.resolution_time))}
         {row("Created", dateLabel(m.created_at))}
         {m.query_hash && row("Query hash", m.query_hash)}
+        {m.resolution?.source === "backtrace" && row("Formula hash", m.resolution.formula_hash)}
         {m.market_pda && row("Market account", m.market_pda, explorer("address", m.market_pda, cfg.rpc_url))}
         {m.yes_mint && row("Yes token", m.yes_mint, explorer("address", m.yes_mint, cfg.rpc_url))}
         {m.no_mint && row("No token", m.no_mint, explorer("address", m.no_mint, cfg.rpc_url))}

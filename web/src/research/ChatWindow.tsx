@@ -121,6 +121,7 @@ function Line({ it }: { it: ThreadItem }) {
       <div className={`chat-msg ${it.role === "user" ? "user" : "agent"}`}>{it.text}</div>
       {it.kind === "datasets" && <a className="chat-link" onClick={() => setFocus("datasets")}>choose the data on the canvas →</a>}
       {it.kind === "source" && it.view_id && <a className="chat-link" onClick={() => setFocus(it.view_id!)}>see the data →</a>}
+      {it.kind === "market" && it.market_id != null && <a className="chat-link answer" href={`#/predictions/market/${it.market_id}`}>open market #{it.market_id} →</a>}
       {!!it.suggestions?.length && (
         <div className="suggestions">
           {it.suggestions.map((s) => (

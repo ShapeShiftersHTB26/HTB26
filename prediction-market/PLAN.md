@@ -354,7 +354,7 @@ Let `p = initial_price_cents`. Each step is one transaction; split a step if it 
 4. **Tx B2:** create the NO book the same way, with base = NO.
 5. **Tx C:** fund the seed. Use `spl_token::mint_to` to mint mUSDC to the admin. It needs `seed_sets` for the sets, plus enough to back the bid ladders on both books. Then call `mint_complete_set(seed_sets)`, which gives the admin YES and NO inventory for the ask ladders.
 6. **Tx D:** admin open orders. Create the admin's `open_orders_indexer` once (it is per owner, so skip it if it exists), then `create_open_orders_account` for the YES book and for the NO book.
-7. **Tx E1:** YES ladder with `place_orders`: asks at `p+1 … p+levels`, bids at `p−1 … p−levels`, each `level_size` tokens.
+7. **Tx E1:** YES ladder with `place_orders`: asks above `p`, bids below `p`. The `levels` offsets grow geometrically from 1¢ to 35¢ (1, 2, 3, 4, 5, 7, 11, 16, 24, 35 for 10 levels). Sizes grow from `level_size` to 4 × `level_size` further out (`markets::ladder`).
 8. **Tx E2:** NO ladder with `place_orders`: asks at `(100−p)+1 …`, bids at `(100−p)−1 …`, same sizes. Clamp all prices to 1–99.
 9. In one DB transaction: insert both `orderbooks` rows, then `UPDATE markets SET status='active'` with the addresses and transaction signatures. On any error, set `status='failed'` and store `error`.
 10. Register the market with the bot manager, with fair value = `p`.
@@ -378,7 +378,7 @@ Every ~10 s per active market:
 
 1. `settle_funds` on both books to pull filled proceeds back to the admin's token accounts.
 2. Rebalance inventory:
-   - If admin YES or NO < 2 × `levels × level_size`: mint mUSDC and `mint_complete_set` to top up both.
+   - If admin YES or NO < 2 × the ladder's total size: mint mUSDC and `mint_complete_set` to top up both.
    - If admin YES and NO are both well above target: `merge_complete_set(min(yes, no) − target)` to free mUSDC.
 3. `cancel_all_and_place_orders` on the YES book around `round(f)`.
 4. `cancel_all_and_place_orders` on the NO book around `100 − round(f)`.

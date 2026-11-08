@@ -163,7 +163,8 @@ export type ThreadItem =
       id: string;
       role: "user" | "agent";
       text: string;
-      kind: "chat" | "action" | "datasets" | "source";
+      kind: "chat" | "action" | "datasets" | "source" | "market";
+      market_id?: number;
       datasets?: string[];
       suggestions?: string[];
       view_id?: string;

@@ -121,9 +121,10 @@ pub async fn seed_demo_markets(chain: &Chain, db: &sqlx::PgPool, markets: &Marke
             description: Some(description.into()),
             resolution_time,
             initial_price_cents: price,
-            seed_sets: 1000,
-            levels: 5,
-            level_size: 50,
+            seed_sets: crate::markets::DEFAULT_SEED_SETS,
+            levels: crate::markets::DEFAULT_LEVELS,
+            level_size: crate::markets::DEFAULT_LEVEL_SIZE,
+            resolution: None,
         };
         let c = markets.create(chain, db, &req).await?;
         tracing::info!(id = c.id, question, "demo market created");

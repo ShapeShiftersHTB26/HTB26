@@ -3,7 +3,7 @@ import type { Books } from "./hooks";
 import { Skeleton } from "./ui";
 import { cents, fmt, Outcome, outcomeLabel, usd } from "./util";
 
-const ROWS = 6;
+const ROWS = 10; // the market maker quotes 10 levels a side, out to ±35¢
 
 /** One outcome's book at a time: asks (sellers) above, bids (buyers) below, spread in between. */
 export default function OrderBook({ books }: { books: Books }) {

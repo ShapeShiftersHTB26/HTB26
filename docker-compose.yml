@@ -24,6 +24,8 @@ services:
       BACKTRACE_THREAD_WORKER: ${BACKTRACE_THREAD_WORKER:-on}   # api serves research threads (off: scripts/runner.py)
       PG_DSN: ${PG_DSN:-}
       BACKTRACE_STORE: ${BACKTRACE_STORE:-postgres}   # default row store: postgres | graph
+      PM_API_URL: ${PM_API_URL:-http://prediction-market-backend:8080}   # markets settled by data (api/app/markets.py)
+      PM_ADMIN_KEY: ${PM_ADMIN_KEY:-dev-admin-key}   # = the prediction-market backend's ADMIN_API_KEY
       WATCHFILES_FORCE_POLLING: "true"
     volumes:
       - ./api/app:/srv/app

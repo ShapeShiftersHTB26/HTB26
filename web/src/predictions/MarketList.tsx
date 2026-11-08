@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { MarketInfo } from "./api";
+import { isDataSettled } from "./DataSettled";
 import CreateMarket from "./CreateMarket";
 import { Quote, useMarkets } from "./hooks";
 import { InsightCard } from "./Insights";
@@ -186,7 +187,9 @@ function MarketCard({ m, quote }: { m: MarketInfo; quote?: Quote }) {
               ? `Resolved ${dateLabel(m.resolved_at)}`
               : `Closed ${dateLabel(m.resolution_time)}`}
         </span>
-        <span>#{m.id}</span>
+        <span>
+          {isDataSettled(m) && <span className="pm-data-badge" title="Settles automatically from a Backtrace calculation">by data</span>}#{m.id}
+        </span>
       </div>
     </div>
   );

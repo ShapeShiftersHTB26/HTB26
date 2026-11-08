@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { MarketInfo } from "./api";
 import { useAppConfig } from "./context";
+import DataSettled from "./DataSettled";
 import { Balances, Books, ProbPoint, useBalances, useBooks, useMarket, useTrades, useTx } from "./hooks";
 import { InsightsBody } from "./Insights";
 import { useMode } from "./mode";
@@ -115,6 +116,7 @@ function TradingBody({
           </div>
         )}
         {p === "resolved" && <ResolvedBanner m={market} />}
+        <DataSettled market={market} />
         <DetailTabs market={market} books={books} live={live} />
       </div>
 
@@ -132,8 +134,9 @@ function TradingBody({
           <div className="pm-card pm-note-card">
             <h4>Trading closed</h4>
             <p>
-              This market closed {dateLabel(market.resolution_time)}. Once the result is posted you can redeem winning shares
-              here.
+              This market closed {dateLabel(market.resolution_time)}.{" "}
+              {market.resolution?.source === "backtrace" ? "Its result is computed from the data (see Settled by data)." : ""} Once
+              the result is posted you can redeem winning shares here.
             </p>
           </div>
         )}

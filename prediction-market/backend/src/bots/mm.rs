@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use super::ActiveMarket;
 use crate::{
     chain::{create_ata_ix, openbook, program, Chain},
-    markets::{bid_notional, ladder, TOKEN},
+    markets::{bid_notional, ladder, ladder_tokens, TOKEN},
 };
 
 pub async fn requote(chain: &Chain, m: &ActiveMarket, fair: f64) -> Result<()> {
@@ -28,7 +28,7 @@ pub async fn requote(chain: &Chain, m: &ActiveMarket, fair: f64) -> Result<()> {
     let center = fair.round() as i64;
     let (yes_bids, yes_asks) = ladder(center, m.levels, m.level_size);
     let (no_bids, no_asks) = ladder(100 - center, m.levels, m.level_size);
-    let target = 2 * (m.levels * m.level_size) as u64 * TOKEN;
+    let target = 2 * ladder_tokens(m.levels, m.level_size) as u64 * TOKEN;
     let yes = chain.ata_balance(&admin, &m.addrs.yes_mint).await;
     let no = chain.ata_balance(&admin, &m.addrs.no_mint).await;
     let usdc = chain.ata_balance(&admin, &chain.musdc).await;

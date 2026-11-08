@@ -48,10 +48,22 @@ impl Chain {
         self.admin.pubkey()
     }
 
+    /// Seconds the cluster clock is behind wall time. A restarted local validator resumes from its ledger's last
+    /// block time, so it can lag by hours; on devnet it's ~0. 0 when it can't be read.
+    pub async fn clock_lag_secs(&self) -> i64 {
+        let Ok(slot) = self.rpc.get_slot().await else { return 0 };
+        for s in [slot, slot.saturating_sub(1), slot.saturating_sub(5)] {
+            if let Ok(t) = self.rpc.get_block_time(s).await {
+                return chrono::Utc::now().timestamp() - t;
+            }
+        }
+        0
+    }
+
     /// Sign + send + confirm. `payer` pays fees; `extra` are additional signers.
     pub async fn send(&self, ixs: &[Instruction], payer: &Keypair, extra: &[&Keypair]) -> Result<String> {
         let mut all = Vec::with_capacity(ixs.len() + 1);
-        all.push(ComputeBudgetInstruction::set_compute_unit_limit(1_000_000));
+        all.push(ComputeBudgetInstruction::set_compute_unit_limit(1_400_000)); // max: a 20-order ladder is heavy
         all.extend_from_slice(ixs);
 
         let blockhash = self.rpc.get_latest_blockhash().await.context("get_latest_blockhash")?;

@@ -1,6 +1,7 @@
 // Insights mode: the same markets, read-only and in plain language — the odds, how they've moved, how solid they
 // are, and how the question resolves. No order books, no trade panel.
 import type { MarketInfo } from "./api";
+import DataSettled, { isDataSettled } from "./DataSettled";
 import { bookStats, Books, ProbPoint, useTrades } from "./hooks";
 import { useMode } from "./mode";
 import PriceChart from "./PriceChart";
@@ -65,7 +66,10 @@ export function InsightCard({ m, prob }: { m: MarketInfo; prob: number | null })
         ) : (
           <span>{p === "resolved" && m.resolved_at ? `Resolved ${dateLabel(m.resolved_at)}` : "No change since launch"}</span>
         )}
-        <span>{p === "open" ? `${countdown(m.resolution_time) ?? "Closing"} left` : p === "awaiting" ? "Awaiting result" : `#${m.id}`}</span>
+        <span>
+          {isDataSettled(m) && <span className="pm-data-badge" title="Settles automatically from a Backtrace calculation">by data</span>}
+          {p === "open" ? `${countdown(m.resolution_time) ?? "Closing"} left` : p === "awaiting" ? "Awaiting result" : `#${m.id}`}
+        </span>
       </div>
     </a>
   );
@@ -124,6 +128,7 @@ export function InsightsBody({ market, books, history }: { market: MarketInfo; b
               : `This question resolved ${outcomeLabel(o as Outcome)}${market.resolved_at ? ` on ${dateLabel(market.resolved_at)}` : ""}. It opened at a ${Math.round(market.initial_price_cents)}% chance.`}
           </p>
         </div>
+        <DataSettled market={market} />
         <div className="pm-card">
           <h4>How it resolved</h4>
           <Rules m={market} />
@@ -173,6 +178,8 @@ export function InsightsBody({ market, books, history }: { market: MarketInfo; b
         <SplitBar p={v} />
         <PriceChart points={history} current={books.prob} reference={{ p: launch, label: `Opened at ${Math.round(launch * 100)}%` }} />
       </div>
+
+      <DataSettled market={market} />
 
       <div className="pm-stats">
         <Stat

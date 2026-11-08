@@ -58,6 +58,16 @@ fn pick_action(rng: &mut impl Rng) -> Action {
     }
 }
 
+/// Order size (whole tokens) and how far past the fair price (cents) the bot will pay or sell. Mostly small orders
+/// near the fair price; now and then a bigger one that walks deeper into the market maker's ladder.
+fn pick_size(rng: &mut impl Rng) -> (i64, i64) {
+    match rng.gen_range(0..100) {
+        0..=69 => (rng.gen_range(1..=20), rng.gen_range(0..=3)),
+        70..=92 => (rng.gen_range(20..=80), rng.gen_range(3..=8)),
+        _ => (rng.gen_range(80..=200), rng.gen_range(8..=16)),
+    }
+}
+
 /// Mint a fresh batch of complete sets for the bot (creates YES/NO ATAs if needed).
 async fn restock(chain: &Chain, m: &ActiveMarket, bot: &Keypair) -> Result<()> {
     let pk = bot.pubkey();
@@ -90,7 +100,8 @@ pub async fn act(chain: &Chain, db: &PgPool, m: &ActiveMarket, bot: &Keypair, fa
     }
     let (action, size_tokens, noise) = {
         let mut rng = rand::thread_rng();
-        (pick_action(&mut rng), rng.gen_range(1..=20i64), rng.gen_range(0..=3i64))
+        let (size, reach) = pick_size(&mut rng);
+        (pick_action(&mut rng), size, reach)
     };
     let base_lots = size_tokens * openbook::BASE_LOTS_PER_TOKEN;
     let yes_fair = fair.round() as i64;

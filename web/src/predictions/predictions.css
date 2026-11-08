@@ -390,3 +390,27 @@
   .pm-activity li { grid-template-columns: 56px 40px 1fr 60px; }
   .pm-activity li > span:nth-child(4) { display: none; }
 }
+
+/* ---------------- settled by data (DataSettled.tsx) ---------------- */
+.pm-data { display: flex; flex-direction: column; gap: 12px; }
+.pm-data-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pm-data-chip, .pm-data-badge { font-size: 11px; font-weight: 600; color: var(--accent); background: var(--accent-soft); padding: 2px 8px; border-radius: 999px; }
+.pm-data-badge { margin-right: 8px; }
+.pm-data-rule { margin: 0; font-size: 16px; line-height: 1.45; }
+.pm-data-rule b.yes { color: var(--pm-yes-ink); }
+.pm-data-now { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.pm-data-now b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.pm-data-would { font-size: 13px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--pm-hover); }
+.pm-data-would.yes { color: var(--pm-yes-ink); background: var(--pm-yes-soft); }
+.pm-data-would.no { color: var(--pm-no-ink); background: var(--pm-no-soft); }
+.pm-data-result { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 10px; background: var(--pm-hover); }
+.pm-data-result b { font-size: 16px; }
+.pm-data-result.yes { background: var(--pm-yes-soft); color: var(--pm-yes-ink); }
+.pm-data-result.no { background: var(--pm-no-soft); color: var(--pm-no-ink); }
+.pm-data-result span { font-size: 14px; color: var(--ink); }
+.pm-data-settle { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); }
+.pm-data-ok { color: var(--pm-yes-ink); font-size: 13px; }
+.pm-data-link { color: var(--accent) !important; font-size: 14px; font-weight: 600; align-self: flex-start; }
+.pm-data .dspark { width: 100%; height: auto; --dspark-ink: var(--accent); --dspark-line: #b7791f; --dspark-muted: var(--muted); --dspark-bg: var(--panel); --dspark-yes: rgba(24, 160, 88, 0.07); }
+.pm-rules > p:first-child { white-space: pre-line; }
+.pm-data .dspark svg { display: block; }

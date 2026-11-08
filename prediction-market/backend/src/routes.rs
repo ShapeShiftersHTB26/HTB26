@@ -122,9 +122,10 @@ async fn create_market_public(State(s): State<Arc<AppState>>, Json(req): Json<Pu
         description: req.description.filter(|d| !d.trim().is_empty()),
         resolution_time: req.resolution_time,
         initial_price_cents: req.initial_price_cents.unwrap_or(50),
-        seed_sets: 1000,
-        levels: 5,
-        level_size: 50,
+        seed_sets: markets::DEFAULT_SEED_SETS,
+        levels: markets::DEFAULT_LEVELS,
+        level_size: markets::DEFAULT_LEVEL_SIZE,
+        resolution: None,
     };
     req.validate().map_err(|e| bad_request(e.to_string()))?;
     let c = s.markets.create(&s.chain, &s.db, &req).await?;
@@ -135,6 +136,8 @@ async fn create_market_public(State(s): State<Arc<AppState>>, Json(req): Json<Pu
 #[derive(Deserialize)]
 struct ResolveReq {
     outcome: String,
+    /// What the outcome was decided from (data-settled markets): stored as `resolution.settlement`.
+    evidence: Option<Value>,
 }
 
 async fn resolve_market(
@@ -152,7 +155,7 @@ async fn resolve_market(
     if chrono::Utc::now() < m.market.resolution_time {
         return Err(bad_request(format!("resolution time {} not reached yet", m.market.resolution_time)));
     }
-    let tx = markets::resolve(&s.chain, &s.db, id, &req.outcome).await?;
+    let tx = markets::resolve(&s.chain, &s.db, id, &req.outcome, req.evidence.as_ref()).await?;
     Ok(Json(json!({ "id": id, "outcome": req.outcome, "tx": tx })))
 }
 

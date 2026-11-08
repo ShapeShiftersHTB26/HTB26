@@ -2,7 +2,8 @@ use anchor_lang::prelude::Pubkey;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use sqlx::{postgres::PgPoolOptions, FromRow, PgPool};
+use serde_json::Value;
+use sqlx::{postgres::PgPoolOptions, types::Json, FromRow, PgPool};
 use std::str::FromStr;
 
 use crate::chain::{openbook::Book, program::MarketAddrs};
@@ -34,6 +35,8 @@ pub struct MarketRow {
     pub created_at: DateTime<Utc>,
     pub resolved_at: Option<DateTime<Utc>>,
     pub query_hash: Option<String>,
+    /// Settlement rule for markets settled by data (Backtrace), with `settlement` evidence once resolved.
+    pub resolution: Option<Json<Value>>,
 }
 
 #[derive(Debug, Clone, Serialize, FromRow)]
@@ -98,12 +101,13 @@ pub struct NewMarket<'a> {
     pub seed_sets: i64,
     pub levels: i32,
     pub level_size: i64,
+    pub resolution: Option<&'a Value>,
 }
 
 pub async fn insert_pending_market(db: &PgPool, m: &NewMarket<'_>) -> Result<i64> {
     let id: (i64,) = sqlx::query_as(
-        "insert into markets (question, description, resolution_time, initial_price_cents, seed_sets, levels, level_size, query_hash)
-         values ($1, $2, $3, $4, $5, $6, $7, $8) returning id",
+        "insert into markets (question, description, resolution_time, initial_price_cents, seed_sets, levels, level_size, query_hash, resolution)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning id",
     )
     .bind(m.question)
     .bind(m.description)
@@ -113,6 +117,7 @@ pub async fn insert_pending_market(db: &PgPool, m: &NewMarket<'_>) -> Result<i64
     .bind(m.levels)
     .bind(m.level_size)
     .bind(m.query_hash)
+    .bind(m.resolution.map(Json))
     .fetch_one(db)
     .await?;
     Ok(id.0)
@@ -176,10 +181,17 @@ pub async fn activate_market(
     Ok(())
 }
 
-pub async fn mark_resolved(db: &PgPool, id: i64, outcome: &str) -> Result<()> {
-    sqlx::query("update markets set status = 'resolved', outcome = $2, resolved_at = now() where id = $1")
+/// `evidence` (data-settled markets) is kept as `resolution.settlement`.
+pub async fn mark_resolved(db: &PgPool, id: i64, outcome: &str, evidence: Option<&Value>) -> Result<()> {
+    sqlx::query(
+        "update markets set status = 'resolved', outcome = $2, resolved_at = now(),
+           resolution = case when $3::jsonb is null then resolution
+                             else coalesce(resolution, '{}'::jsonb) || jsonb_build_object('settlement', $3::jsonb) end
+         where id = $1",
+    )
         .bind(id)
         .bind(outcome)
+        .bind(evidence.map(Json))
         .execute(db)
         .await?;
     Ok(())

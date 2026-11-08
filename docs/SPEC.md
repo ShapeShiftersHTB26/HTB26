@@ -191,8 +191,25 @@ Each operation is a typed function in `ops.py`, registered with `@operation`. It
 | `trace` | 3 | `rid` | levels |
 | `append_batch` | DP2 | `view_id, path` | new raw batch plus a new snapshot of the source view (with hashes) |
 | `verify` | DP2 | `instance_id, recompute=True` | hash-tree verification report |
+| `market_draft` | PM | `view_id, where?, column?, op?, threshold?, resolution_time?, initial_price_cents?, question?` | defaults + checks for a data-settled market (see below) |
+| `create_market` *(REST only)* | PM | the same plus `intent_id?` | opens the market on the prediction-market backend |
+| `market_status`, `settle_market` *(REST only)* | PM | `market_id` | today's value / settles a market past its end date |
 | `set_auto_accept` | 5 | `view_id, on` | – |
 | `wait_for_decision` | 5 | `target_ids, timeout_s ≤ 50` | statuses and new comments |
+
+## Markets settled by data (`api/app/markets.py`)
+A computed view becomes a YES/NO prediction market on one of its numbers: *"will `column` for the row `where` be `op` `threshold` at `resolution_time`?"*. Research tables have **Make it a market** (or **Ask the market** on the next-period row).
+- **Checks** (`market_draft`, re-run on every edit):
+  - **Blocking:** every step from the sources is approved and is `ops` (an `agent_map`/`agent_reduce` step blocks it); the selector picks at most one row; the column is numeric; the end date is ≥ 2 min away; the table has ≤ 5000 rows.
+  - **Warnings:** the row doesn't exist yet (void if it still doesn't by then); today's data already decides it; the line is far outside the data; the period isn't over by the end date.
+  - **Defaults:** the next period (years, `YYYY-MM`); a line rounded from the latest value; an end date one month after the period; and a starting chance from past period-on-period changes.
+- **Pinning:** the market stores its rule in the prediction-market backend (`markets.resolution` jsonb): view, where, column, op, threshold, the formula hash, and `pins` (the shape and transform ids of every view upstream). Revising the view later doesn't change what the market settles on.
+- **Settlement:** `settle_market` is permissionless; the api also runs it every 20 s for due markets.
+  1. Evaluate the pinned chain on the latest source snapshots, reusing an instance computed from the same inputs.
+  2. Check the formula hash and `verify(recompute=True)`.
+  3. Compare and post the outcome. Missing row → void.
+  4. Post the evidence (`resolution.settlement`: value, row, instance hash, source files) to `POST /markets/{id}/resolve` with the admin key (`PM_API_URL`, `PM_ADMIN_KEY`).
+- **Display:** the Predictions tab shows a "Settled by data" card: the rule, today's value, history against the line, the evidence and a link back to the research thread.
 
 ## Web (one page, polls `get_graph` every 2s)
 - **Canvas** (react-flow, laid out top to bottom with dagre): one graph of views, data and visuals.

@@ -223,7 +223,8 @@ async fn load_active_markets(chain: &SharedChain, db: &PgPool) -> Result<Vec<Act
             yes_oo: yb.admin_open_orders()?,
             no_oo: nb.admin_open_orders()?,
             initial_price_cents: m.market.initial_price_cents as i64,
-            levels: m.market.levels as i64,
+            // markets made before the 10-level default get the full ladder too
+            levels: (m.market.levels as i64).max(crate::markets::DEFAULT_LEVELS),
             level_size: m.market.level_size,
         });
     }

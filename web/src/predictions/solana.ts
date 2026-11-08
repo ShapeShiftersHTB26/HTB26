@@ -176,7 +176,7 @@ function client(conn: Connection, openbookId: PublicKey): OpenBookV2Client {
   return obClient;
 }
 
-export async function loadL2(conn: Connection, openbookId: PublicKey, market: PublicKey, depth = 8): Promise<L2> {
+export async function loadL2(conn: Connection, openbookId: PublicKey, market: PublicKey, depth = 12): Promise<L2> {
   const m = await Market.load(client(conn, openbookId), market);
   await m.loadOrderBook();
   const toLevels = (rows: [number, number, BN, BN][]) => rows.map(([price, size]) => ({ price, size }));

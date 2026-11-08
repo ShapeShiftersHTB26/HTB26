@@ -37,11 +37,24 @@ pub struct CreateMarketReq {
     /// Whole tokens per ladder level.
     #[serde(default = "d_level_size")]
     pub level_size: i64,
+    /// Settlement rule for a market settled by data (set by Backtrace through the admin endpoint).
+    #[serde(default)]
+    pub resolution: Option<serde_json::Value>,
 }
 fn d_price() -> i64 { 50 }
-fn d_seed() -> u64 { 1000 }
-fn d_levels() -> i64 { 5 }
-fn d_level_size() -> i64 { 50 }
+fn d_seed() -> u64 { DEFAULT_SEED_SETS }
+fn d_levels() -> i64 { DEFAULT_LEVELS }
+fn d_level_size() -> i64 { DEFAULT_LEVEL_SIZE }
+
+/// Default liquidity for new markets: 10 levels per side from 1¢ to 35¢ off the fair price, 50 to 200 shares a
+/// level (1,250 shares per side), backed by 2,000 complete sets.
+pub const DEFAULT_LEVELS: i64 = 10;
+pub const DEFAULT_LEVEL_SIZE: i64 = 50;
+pub const DEFAULT_SEED_SETS: u64 = 2_000;
+/// How far (cents) the outermost level sits from the fair price.
+const LADDER_SPAN: f64 = 35.0;
+/// The outermost level is this many times the size of the innermost one.
+const LADDER_DEPTH: f64 = 4.0;
 
 impl CreateMarketReq {
     pub fn validate(&self) -> Result<()> {
@@ -55,8 +68,11 @@ impl CreateMarketReq {
         if !(1..=10).contains(&self.levels) || self.level_size < 1 {
             bail!("levels must be 1..=10 and level_size >= 1");
         }
-        if (self.seed_sets as i64) < self.levels * self.level_size {
-            bail!("seed_sets must be >= levels * level_size so the ask ladders are backed");
+        if (self.seed_sets as i64) < ladder_tokens(self.levels, self.level_size) {
+            bail!(
+                "seed_sets must be >= {} (the ask ladder's total size) so the ask ladders are backed",
+                ladder_tokens(self.levels, self.level_size)
+            );
         }
         if self.resolution_time <= Utc::now() + chrono::Duration::seconds(30) {
             bail!("resolution_time must be at least 30s in the future");
@@ -65,20 +81,60 @@ impl CreateMarketReq {
     }
 }
 
-/// Symmetric ladder around `center` cents: bids center-1.., asks center+1.. (clamped to 1..=99).
+/// The ladder's levels as (cents off the fair price, size in whole tokens). The offsets grow geometrically from 1¢
+/// to LADDER_SPAN, so the top of the book stays tight (2¢ spread) while there is depth across most of the price
+/// range. Sizes grow linearly from `level_size` to LADDER_DEPTH × `level_size` further out, like a real book.
+/// n=10: offsets 1 2 3 4 5 7 11 16 24 35, sizes ×1 1.3 1.7 2 2.3 2.7 3 3.3 3.7 4.
+pub fn ladder_levels(levels: i64, level_size_tokens: i64) -> Vec<(i64, i64)> {
+    let n = levels.clamp(1, 10) as usize;
+    let mut out: Vec<(i64, i64)> = Vec::with_capacity(n);
+    for i in 0..n {
+        let t = if n == 1 { 0.0 } else { i as f64 / (n - 1) as f64 };
+        let mut off = LADDER_SPAN.powf(t).round() as i64;
+        if let Some(&(prev, _)) = out.last() {
+            off = off.max(prev + 1); // distinct prices
+        }
+        let size = (level_size_tokens as f64 * (1.0 + (LADDER_DEPTH - 1.0) * t)).round() as i64;
+        out.push((off, size.max(1)));
+    }
+    out
+}
+
+/// Total shares on one side of the ladder (what the asks need in inventory).
+pub fn ladder_tokens(levels: i64, level_size_tokens: i64) -> i64 {
+    ladder_levels(levels, level_size_tokens).iter().map(|(_, s)| s).sum()
+}
+
+/// Symmetric ladder around `center` cents: bids below, asks above, levels past 1¢ / 99¢ dropped.
 pub fn ladder(center: i64, levels: i64, level_size_tokens: i64) -> (Vec<Quote>, Vec<Quote>) {
-    let base_lots = level_size_tokens * BASE_LOTS_PER_TOKEN;
-    let bids = (1..=levels)
-        .map(|i| center - i)
-        .filter(|p| *p >= 1)
-        .map(|price_lots| Quote { price_lots, base_lots })
-        .collect();
-    let asks = (1..=levels)
-        .map(|i| center + i)
-        .filter(|p| *p <= 99)
-        .map(|price_lots| Quote { price_lots, base_lots })
-        .collect();
+    let lv = ladder_levels(levels, level_size_tokens);
+    let quote = |price_lots: i64, size: i64| Quote { price_lots, base_lots: size * BASE_LOTS_PER_TOKEN };
+    let bids = lv.iter().map(|&(o, s)| (center - o, s)).filter(|(p, _)| *p >= 1).map(|(p, s)| quote(p, s)).collect();
+    let asks = lv.iter().map(|&(o, s)| (center + o, s)).filter(|(p, _)| *p <= 99).map(|(p, s)| quote(p, s)).collect();
     (bids, asks)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ladder_is_wide_tight_at_the_top_and_arbitrage_free() {
+        let lv = ladder_levels(10, 50);
+        assert_eq!(lv.iter().map(|l| l.0).collect::<Vec<_>>(), vec![1, 2, 3, 4, 5, 7, 11, 16, 24, 35]);
+        assert_eq!((lv[0].1, lv[9].1), (50, 200));
+        assert_eq!(ladder_tokens(10, 50), 1_250);
+        assert!(ladder_tokens(DEFAULT_LEVELS, DEFAULT_LEVEL_SIZE) <= DEFAULT_SEED_SETS as i64);
+        // 5 levels (older markets) still span the same range
+        assert_eq!(ladder_levels(5, 50).iter().map(|l| l.0).collect::<Vec<_>>(), vec![1, 2, 6, 14, 35]);
+        for c in [5, 30, 50, 77, 95] {
+            let (yb, ya) = ladder(c, 10, 50);
+            let (nb, na) = ladder(100 - c, 10, 50);
+            assert!(yb.iter().all(|q| (1..=99).contains(&q.price_lots)) && ya.iter().all(|q| (1..=99).contains(&q.price_lots)));
+            assert!(ya[0].price_lots + na[0].price_lots > 100, "asks sum > 100 at {c}");
+            assert!(yb[0].price_lots + nb[0].price_lots < 100, "bids sum < 100 at {c}");
+        }
+    }
 }
 
 /// mUSDC (base units) needed to back a set of bids.
@@ -130,6 +186,7 @@ impl Markets {
                 seed_sets: (req.seed_sets * TOKEN) as i64,
                 levels: req.levels as i32,
                 level_size: req.level_size,
+                resolution: req.resolution.as_ref(),
             },
         )
         .await?;
@@ -153,7 +210,14 @@ impl Markets {
 async fn create_onchain(chain: &Chain, db: &PgPool, req: &CreateMarketReq, id: i64, txs: &mut Vec<String>) -> Result<()> {
     let admin = chain.admin_pk();
     let addrs = program::market_addrs(&chain.program_id, id as u64);
-    let resolution_ts = req.resolution_time.timestamp();
+    // On-chain deadlines (book expiry, resolve unlock) run on the cluster clock. When it lags wall time (a restarted
+    // local validator), shift them by the lag so they arrive after the same wall-clock duration as resolution_time.
+    let lag = chain.clock_lag_secs().await;
+    let shift = if lag > 30 { lag } else { 0 };
+    if shift > 0 {
+        tracing::info!(id, lag, "cluster clock is behind wall time; shifting on-chain deadlines");
+    }
+    let resolution_ts = req.resolution_time.timestamp() - shift;
 
     // Tx A: our program — Market PDA, YES/NO mints, vault.
     txs.push(
@@ -297,7 +361,7 @@ pub fn parse_outcome(s: &str) -> Result<Outcome> {
 }
 
 /// Resolve on-chain, pull the market maker's orders/funds, update the DB.
-pub async fn resolve(chain: &Chain, db: &PgPool, id: i64, outcome_str: &str) -> Result<String> {
+pub async fn resolve(chain: &Chain, db: &PgPool, id: i64, outcome_str: &str, evidence: Option<&serde_json::Value>) -> Result<String> {
     let outcome = parse_outcome(outcome_str)?;
     let m = db::get_market(db, id).await?.context("market not found")?;
     if m.market.status != "active" {
@@ -312,7 +376,7 @@ pub async fn resolve(chain: &Chain, db: &PgPool, id: i64, outcome_str: &str) -> 
         .send_admin(&[program::resolve_ix(&chain.program_id, &admin, &addrs, outcome)], &[])
         .await
         .context("resolve_market")?;
-    db::mark_resolved(db, id, outcome_str).await?;
+    db::mark_resolved(db, id, outcome_str, evidence).await?;
 
     // Best effort: cancel the MM's resting orders and settle both books.
     for (row, base) in [(&m.yes_book, addrs.yes_mint), (&m.no_book, addrs.no_mint)] {

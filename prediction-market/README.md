@@ -59,11 +59,13 @@ Notes:
 ## Creating markets
 
 - **Anyone:** `POST /public/markets` with `{question, description?, resolution_time, initial_price_cents?}`. This is what the UI's **Create market** button calls.
-  - The admin wallet pays for and seeds both books with the default ladder (5 levels × 50 tokens around the starting price).
+  - The admin wallet pays for and seeds both books with the default ladder: 10 levels a side, from 1¢ to 35¢ off the starting price (offsets 1, 2, 3, 4, 5, 7, 11, 16, 24, 35¢), growing from 50 to 200 shares a level. That's 1,250 shares a side, backed by 2,000 complete sets. The market maker re-quotes the same shape around the fair price.
   - The question is normalized (trimmed, lowercased, whitespace collapsed) and hashed with sha256 (`query_hash`).
   - Sending the same question again returns the existing market (`created: false`).
   - Later, this hash becomes the on-chain market id. Today the on-chain id is still the database id.
 - **Admin:** `POST /markets` with the same body plus custom `seed_sets`, `levels` and `level_size`.
+- **From data (Backtrace):** on a computed table in the Research tab, choose **Make it a market**. The api (`api/app/markets.py`) validates that the table is decidable by a fixed calculation, then calls the admin `POST /markets` with a `resolution` rule (view, row, column, comparison, line, pinned formula). It settles the market itself after `resolution_time`, posting the outcome with `evidence`. See docs/SPEC.md, "Markets settled by data".
+- **Clock lag:** on-chain deadlines (book expiry, the resolve unlock) run on the cluster clock. A restarted local validator resumes from its ledger and can lag wall time by hours, so the backend shifts them by the measured lag. On devnet the lag is about 0.
 
 ## Running without Docker
 
@@ -135,8 +137,8 @@ Admin endpoints need the header `x-admin-key`.
 | GET | `/markets[?status=active]`, `/markets/:id` | | Markets with both book addresses and `query_hash` |
 | GET | `/markets/:id/trades` | | Recent bot orders |
 | POST | `/public/markets` | | `{question, description?, resolution_time, initial_price_cents=50}` → `{created, market}`; seeded with liquidity |
-| POST | `/markets` | admin | `{question, description?, resolution_time, initial_price_cents=50, seed_sets=1000, levels=5, level_size=50}` |
-| POST | `/markets/:id/resolve` | admin | `{outcome: "yes" \| "no" \| "void"}`, only after `resolution_time` |
+| POST | `/markets` | admin | `{question, description?, resolution_time, initial_price_cents=50, seed_sets=2000, levels=10, level_size=50, resolution?}` (`resolution`: the rule of a market settled by data, returned on the market) |
+| POST | `/markets/:id/resolve` | admin | `{outcome: "yes" \| "no" \| "void", evidence?}`, only after `resolution_time`; `evidence` is stored as `resolution.settlement` |
 | POST | `/faucet` | | `{wallet}`: 1,000 mUSDC (+SOL), limited to 1 per wallet per hour |
 | POST | `/bots/start`, `/bots/stop` | admin | |
 | GET | `/bots/status` | | Bot balances, fair prices, trades in the last minute |
