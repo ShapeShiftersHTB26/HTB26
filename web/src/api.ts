@@ -23,7 +23,7 @@ export type ChatEvent =
 
 /** Send one chat message to the app agent and call onEvent for each streamed event (SSE over a POST). */
 export async function chat(
-  body: { message: string; session_id?: string | null; view_id?: string | null; intent_id?: string | null },
+  body: { message: string; session_id?: string | null; view_id?: string | null; intent_id?: string | null; model?: string },
   onEvent: (e: ChatEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
@@ -193,6 +193,7 @@ export type Thread = {
     status: string;
     mode: string;
     auto?: boolean;
+    agent_model?: string;
     agent_status: "idle" | "queued" | "working" | "error";
     agent_error?: string;
     agent_activity?: string;

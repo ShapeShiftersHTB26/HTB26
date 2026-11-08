@@ -156,6 +156,7 @@ def next_turn(reset: bool = False) -> dict:
     thread = [intents[i] for i in _thread_ids(q["id"], intents)]
     latest = max(thread, key=lambda x: x["created_at"])
     out = {"intent_id": q["id"], "session_id": q.get("session_id"), "started_at": started,
+           "model": q.get("agent_model"),
             "messages": [{"text": m["text"], "kind": m.get("kind", "chat"),
                           "focus": [{"id": f, "name": _view_name(f)} for f in m.get("focus") or []]} for m in new],
             "latest_intent": {"id": latest["id"], "status": latest["status"], "text": latest["text"],
@@ -246,6 +247,7 @@ def get_thread(intent_id: str) -> dict:
     return {"intent": {"id": root, "text": rq["text"], "title": rq.get("title"), "status": rq["status"],
                        "mode": rq.get("mode"),
                        "auto": rq.get("mode") == "auto",
+                       "agent_model": rq.get("agent_model"),
                        "agent_status": rq.get("agent_status") or "idle", "agent_error": rq.get("agent_error"),
                        "agent_activity": rq.get("agent_activity"),
                        "created_at": rq["created_at"]},
@@ -578,3 +580,16 @@ def set_auto(intent_id: str, on: bool) -> dict:
             ask(text=f"Auto-accept is on{f' (accepted {accepted} proposals)' if accepted else ''}. "
                      "Carry on to the answer, approving your own steps.", intent_id=root, kind="action")
     return {"intent_id": root, "auto": on, "accepted": accepted}
+
+
+@operation(mcp=False)
+def set_model(intent_id: str, model: str) -> dict:
+    """Chat model for a workspace's agent turns: haiku | sonnet | opus (or the model id). Applies from the next
+    turn; the conversation carries on in the same session. AI steps inside calculations keep BACKTRACE_MODEL."""
+    from .chat import MODELS
+    mid = MODELS.get(model, model)
+    if mid not in MODELS.values():
+        raise ValueError(f"model must be one of {sorted(MODELS)}")
+    root = _root_of(intent_id)
+    g.run("MATCH (q:Intent {id:$q}) SET q.agent_model = $m", q=root, m=mid)
+    return {"intent_id": root, "agent_model": mid}

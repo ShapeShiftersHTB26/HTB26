@@ -20,7 +20,7 @@ IDLE_S = 1.5
 async def serve(t: dict) -> None:
     from . import chat  # lazy: needs claude-agent-sdk in the image
     texts, session_id, error = [], t.get("session_id"), None
-    async for ev in chat.events(t["prompt"], t.get("session_id")):
+    async for ev in chat.events(t["prompt"], t.get("session_id"), t.get("model")):
         kind = ev["type"]
         if kind == "session":
             session_id = ev.get("session_id") or session_id

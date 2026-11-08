@@ -69,9 +69,13 @@ async def chat(request: Request, body: dict = Body(...)):
         from . import chat as agent_chat  # lazy: the rest of the api keeps working on an image built before chat
     except ImportError as e:
         raise HTTPException(503, f"chat needs claude-agent-sdk; rebuild the api image ({e})") from e
+    try:
+        model = agent_chat.pick_model(body.get("model"))
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
     return StreamingResponse(
         agent_chat.stream(message, body.get("session_id"), body.get("view_id"), body.get("intent_id"),
-                          request.is_disconnected),
+                          request.is_disconnected, model),
         media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 

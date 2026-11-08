@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { ThreadItem } from "../api";
+import { op, ThreadItem } from "../api";
+import ModelSelect, { modelKey } from "../ModelSelect";
 import { useThread } from "./ctx";
 
 const LABEL = { schema: "shape", transform: "how it's computed", visual: "visual" } as const;
 
 /** The floating chat: conversation only. Proposals appear as links to the node they change on the canvas. */
 export default function ChatWindow() {
-  const { t, send, focus, setFocus } = useThread();
+  const { t, send, focus, setFocus, reload } = useThread();
   const [open, setOpen] = useState(true);
   const [text, setText] = useState("");
   const [busySend, setBusySend] = useState(false);
@@ -44,6 +45,8 @@ export default function ChatWindow() {
       <div className="chat-head">
         <strong>Research chat</strong>
         <span className="muted small grow">{busy ? "working…" : ""}</span>
+        <ModelSelect value={modelKey(t.intent.agent_model)}
+                     onChange={(m) => op("set_model", { intent_id: t.intent.id, model: m }).then(reload)} />
         <button className="close" title="Minimise" onClick={() => setOpen(false)}>–</button>
       </div>
       <div className="chat-log">

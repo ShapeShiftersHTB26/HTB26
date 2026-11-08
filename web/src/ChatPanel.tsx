@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { chat, Graph } from "./api";
+import ModelSelect, { ModelKey, modelKey } from "./ModelSelect";
 
 type Item = { kind: "user" | "agent" | "tool" | "error" | "note"; text: string };
 type Saved = { session: string | null; items: Item[] };
@@ -22,6 +23,21 @@ export default function ChatPanel(props: { graph: Graph; viewId: string | null; 
   const [open, setOpen] = useState(true);
   const [items, setItems] = useState<Item[]>(saved.items);
   const [session, setSession] = useState<string | null>(saved.session);
+  const [model, setModel] = useState<ModelKey>(() => {
+    try {
+      return modelKey(localStorage.getItem("backtrace.chat.model"));
+    } catch {
+      return "haiku";
+    }
+  });
+  const pickModel = (m: ModelKey) => {
+    setModel(m);
+    try {
+      localStorage.setItem("backtrace.chat.model", m);
+    } catch {
+      /* storage unavailable */
+    }
+  };
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const abort = useRef<AbortController | null>(null);
@@ -49,7 +65,7 @@ export default function ChatPanel(props: { graph: Graph; viewId: string | null; 
     const ctl = new AbortController();
     abort.current = ctl;
     try {
-      await chat({ message, session_id: session, view_id: props.viewId, intent_id: props.intentId }, (e) => {
+      await chat({ message, session_id: session, view_id: props.viewId, intent_id: props.intentId, model }, (e) => {
         if (e.type === "session") setSession(e.session_id);
         else if (e.type === "text") add({ kind: "agent", text: e.text });
         else if (e.type === "tool") add({ kind: "tool", text: e.label });
@@ -85,6 +101,7 @@ export default function ChatPanel(props: { graph: Graph; viewId: string | null; 
       <div className="chat-head">
         <strong>Ask Backtrace</strong>
         <span className="muted small grow">{busy ? "working…" : "the app agent"}</span>
+        <ModelSelect value={model} onChange={pickModel} disabled={busy} />
         <button className="small" onClick={newChat} disabled={busy || items.length === 0}>New chat</button>
         <button className="close" title="Minimise" onClick={() => setOpen(false)}>–</button>
       </div>

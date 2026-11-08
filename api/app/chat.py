@@ -28,6 +28,19 @@ AGENT_DIR = os.environ.get("AGENT_DIR", "/srv/agent")
 MCP_URL = "http://localhost:8000/mcp/"  # this api's own MCP endpoint
 # Web chat + research threads; Haiku by default: it's billed per turn on the API key.
 MODEL = os.environ.get("BACKTRACE_AGENT_MODEL") or "claude-haiku-5-5"
+# What the chat model selector may pick (short name -> model id). Anything else is refused: the URL is public.
+MODELS = {"haiku": "claude-haiku-5-5", "sonnet": "claude-sonnet-5-5", "opus": "claude-opus-5-5"}
+
+
+def pick_model(name: str | None) -> str | None:
+    """A selector value (short name or model id) -> model id; None = the default. Raises on anything else."""
+    if not name:
+        return None
+    if name in MODELS:
+        return MODELS[name]
+    if name in MODELS.values():
+        return name
+    raise ValueError(f"model must be one of {sorted(MODELS)}")
 MAX_TURNS = 80  # HACK: runaway guard; serving a full intent takes roughly 20-40 tool calls
 _RUNS: set[asyncio.Task] = set()
 
@@ -110,7 +123,7 @@ def _sse(ev: dict) -> str:
 
 
 async def stream(message: str, session_id: str | None, view_id: str | None, intent_id: str | None,
-                 is_disconnected: Callable[[], Awaitable[bool]]) -> AsyncIterator[str]:
+                 is_disconnected: Callable[[], Awaitable[bool]], model: str | None = None) -> AsyncIterator[str]:
     """Run the agent in a background task and relay its events. If the browser goes away (Stop, closed tab),
     cancel the run right away, which also ends the Claude Code subprocess, instead of at the agent's next event."""
     queue: asyncio.Queue[str | None] = asyncio.Queue()
@@ -121,7 +134,7 @@ async def stream(message: str, session_id: str | None, view_id: str | None, inte
     async def produce():
         try:
             with scope:
-                async for ev in _run(_prompt(message, view_id, intent_id), session_id):
+                async for ev in _run(_prompt(message, view_id, intent_id), session_id, model):
                     await queue.put(ev)
         finally:
             queue.put_nowait(None)
@@ -144,8 +157,8 @@ async def stream(message: str, session_id: str | None, view_id: str | None, inte
         scope.cancel()
 
 
-async def _run(prompt: str, session_id: str | None) -> AsyncIterator[str]:
-    async for ev in events(prompt, session_id):
+async def _run(prompt: str, session_id: str | None, model: str | None = None) -> AsyncIterator[str]:
+    async for ev in events(prompt, session_id, model):
         yield _sse(ev)
 
 

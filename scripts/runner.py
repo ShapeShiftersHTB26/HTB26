@@ -27,11 +27,11 @@ def op(name: str, **kwargs):
         return json.loads(r.read())
 
 
-def run_claude(prompt: str, session_id: str | None) -> dict:
+def run_claude(prompt: str, session_id: str | None, model: str | None = None) -> dict:
     exe = shutil.which("claude")
     if not exe:
         raise RuntimeError("claude CLI not found on PATH")
-    cmd = [exe, "-p", "--output-format", "json", "--model", MODEL,
+    cmd = [exe, "-p", "--output-format", "json", "--model", model or MODEL,
            "--mcp-config", ".mcp.json", "--strict-mcp-config"]
     if session_id:
         cmd += ["--resume", session_id]
@@ -53,12 +53,12 @@ def serve(t: dict) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {qid}: {' | '.join(m['text'] for m in t['messages'])[:120]}", flush=True)
     try:
         try:
-            out = run_claude(prompt, t.get("session_id"))
+            out = run_claude(prompt, t.get("session_id"), t.get("model"))
         except RuntimeError as e:
             if not t.get("session_id"):
                 raise
             print(f"  resume failed ({e}); starting a fresh session", flush=True)
-            out = run_claude(prompt, None)
+            out = run_claude(prompt, None, t.get("model"))
         op("finish_turn", intent_id=qid, reply=out.get("result"), session_id=out.get("session_id"),
            started_at=t["started_at"])
         cost = out.get("total_cost_usd")

@@ -103,6 +103,11 @@ Indexes: `:Record(rid)`, plus `:View(id)`, `:SchemaVersion(id)`, `:Transform(id)
     - Each thread resumes its own session (`Intent.session_id`).
     - `Intent.agent_status` is idle, queued, working or error; `Intent.agent_activity` is the current tool call.
     - **Fallback:** with `BACKTRACE_THREAD_WORKER=off`, `scripts/runner.py` serves threads with the host `claude` CLI instead.
+    - **Chat model selector** (Haiku 5.5, Sonnet 5.5 or Opus 5.5):
+      - **Research threads:** set per workspace (`set_model`, stored as `Intent.agent_model`), applied from the next turn.
+      - **Graph-tab chat:** stored per browser and sent as `model` to `/api/chat`.
+      - **Validation:** the api accepts only those three (`chat.MODELS`).
+      - **Not affected:** AI steps inside calculations keep `BACKTRACE_MODEL`.
   - **Canvas:** `get_thread.canvas` gives:
     - the thread's tables, with the head plus pending shape versions (the UI draws a pending sibling as a diff), pending transforms, visuals, the latest instance and the answer;
     - upstream lineage through head transforms;
