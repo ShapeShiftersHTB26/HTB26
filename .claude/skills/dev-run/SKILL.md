@@ -27,6 +27,21 @@ It uses only the Python standard library (`urllib`) against REST, prints PASS or
 - **S2:** propose a visual and approve it; ingest a small source; propose a transform that reads it and approve it; `get_frontier` returns nothing.
 - **S3:** `evaluate` returns `row_count > 0`; `trace` of the first record ends at the source.
 
+## Moving to a server (state export / import)
+Row data lives in Postgres (`PG_DSN`), so a new server only needs the graph and the agentic cache.
+
+1. **Export here:** `python scripts/export_state.py`. This writes `data/state/<stamp>/`, about 300 KB:
+   - `graph.jsonl`, a Memgraph `DUMP DATABASE`;
+   - `cache.tar.gz`, the agentic cache;
+   - `manifest.json` with node counts, the source files used, and a check that every manifest finds its rows.
+2. **Copy the folder to the server**, into `data/state/<stamp>/`. Give the server a `.env` with the **same** `PG_DSN`, plus `ANTHROPIC_API_KEY` and `PM_ADMIN_KEY`.
+3. **Import on the server:** `python scripts/import_state.py <stamp>`.
+   - It refuses a non-empty graph. Add `--replace` to wipe the server's **graph** first; Postgres is never touched.
+   - It then checks that every manifest finds its rows and spot-verifies a few small results.
+4. **Source CSVs (`data/raw`)** are optional on the server. You only need them for new ingests, appended batches, exported notebooks and verify's file checksums.
+5. **Check later** with `python scripts/import_state.py --check`.
+6. **Don't share one Postgres between dev and prod:** the graphs drift apart, and an `--all` reset from either side hits both.
+
 ## Troubleshooting
 - **Postgres:** `ping` reports `postgres: false` with an error if `PG_DSN` (in `.env`) is missing or the cluster is unreachable. A full `scripts/reset.py --all` also drops the `raw`, `derived` and `meta` schemas.
 - **api can't reach Memgraph:** use `bolt://memgraph:7687` inside compose. Memgraph takes a few seconds to start, so the api retries on startup.
