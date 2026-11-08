@@ -197,6 +197,14 @@ body.dragging iframe { pointer-events: none; }
 .nav-tabs a { padding: 4px 14px; border-radius: 6px; color: var(--muted); text-decoration: none; font-weight: 600; }
 .nav-tabs a:hover { color: var(--ink); }
 .nav-tabs a.active { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+/* four tabs don't fit next to the logo on a phone: let the tab row scroll instead of widening the page */
+@media (max-width: 600px) {
+  .nav-tabs { min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .nav-tabs a { padding: 4px 10px; white-space: nowrap; }
+}
+/* the ADHD tab's link: a little rainbow so it stands out */
+.nav-tabs a.adhd-tab { background: linear-gradient(90deg, #ff2d95, #ffb300, #39d353, #00b8ff, #b026ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.nav-tabs a.adhd-tab.active { background: linear-gradient(90deg, #ff2d95, #ffb300, #39d353, #00b8ff, #b026ff); color: #fff; -webkit-background-clip: border-box; background-clip: border-box; text-shadow: 0 1px 0 rgba(0,0,0,.35); }
 
 /* hashes + verify */
 .verify { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; background: var(--bg); }
