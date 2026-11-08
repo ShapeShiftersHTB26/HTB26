@@ -198,6 +198,13 @@ scp .env $SERVER:HTB26/.env                                               # star
 
 Rows you already loaded into Postgres stay there, and the server reads them through the same `PG_DSN`. If you want your existing research on the server too, see "Optional: bring your local research over" below; it also explains why dev and prod shouldn't keep sharing that database afterwards.
 
+**Quick way:** on the server, run `python3 scripts/setup_env.py --server`.
+- It asks for every value below. Existing values are offered as defaults, and secrets are read without echo.
+- It generates the access code and the market admin key if you don't have them.
+- It writes both `.env` and `prediction-market/.env.prod`, with the same admin key in both.
+
+To do it by hand instead:
+
 **Root `.env`.** On the server, edit `~/HTB26/.env` so it contains:
 
 ```dotenv

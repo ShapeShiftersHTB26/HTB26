@@ -6,6 +6,7 @@ description: Run, reset, seed and smoke-test the Backtrace stack (docker compose
 # Run and check
 
 ## Start
+After cloning, run `python scripts/setup_env.py` to fill in `.env` (on a server: `--server`, see docs/DEPLOY.md).
 ```powershell
 docker compose up --build -d          # memgraph:7687, lab:3000, api:8000, web:5173
                                       # + prediction-market-{db:5433, validator:8899/8900, backend:8080} (Predictions tab)
