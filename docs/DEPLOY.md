@@ -196,7 +196,7 @@ rsync -av --progress data/raw/ $SERVER:HTB26/data/raw/                    # cata
 scp .env $SERVER:HTB26/.env                                               # starting point: keeps ANTHROPIC_API_KEY and PG_DSN
 ```
 
-Rows you already loaded into Postgres stay there. The server reads them through the same `PG_DSN`.
+Rows you already loaded into Postgres stay there, and the server reads them through the same `PG_DSN`. If you want your existing research on the server too, see "Optional: bring your local research over" below; it also explains why dev and prod shouldn't keep sharing that database afterwards.
 
 **Root `.env`.** On the server, edit `~/HTB26/.env` so it contains:
 
@@ -283,42 +283,36 @@ docker compose stop lab                               # when done
 ```
 
 **Backups:**
-- **Memgraph** holds views, proposals, research threads and graph-stored rows. Stopping it first makes it write a consistent snapshot:
+- **Memgraph** holds views, proposals, research threads and fingerprints. The state export is small and doesn't depend on the Memgraph version, so it doubles as a backup:
   ```bash
-  mkdir -p ~/backups
-  docker compose stop memgraph
-  docker run --rm -v htb26_mg_data:/v -v ~/backups:/b alpine tar czf /b/memgraph-$(date +%F).tgz -C /v .
-  docker compose start memgraph
+  python3 scripts/export_state.py                 # data/state/<stamp>/ on the server (gitignored)
+  rsync -av deploy@203.0.113.10:HTB26/data/state/ ./state-backups/     # pull it off the server, from your laptop
   ```
-  (`docker volume ls | grep mg_data` shows the exact volume name.)
+  To restore, run `python3 scripts/import_state.py <stamp> --replace`. The rows themselves live in Postgres.
 - **Postgres:** your provider's backups.
 - **`prediction-market/keys/`:** keep an offline copy. `admin.json` is the wallet that pays for everything.
 - **The whole server:** Vultr Auto Backups or snapshots.
 
 ## Optional: bring your local research over
 
-Your laptop's threads and views live in its Memgraph volume. Move them before anyone starts new work on the server.
+Your laptop's threads, views and fingerprints live in its Memgraph graph. The row data is already in Postgres. `scripts/export_state.py` and `scripts/import_state.py` move the graph plus the agentic-step cache; the dev-run skill has the details.
 
-**On the laptop** (from the repo root):
-
-```bash
-docker compose stop memgraph
-docker run --rm -v htb26_mg_data:/v -v "$PWD":/b alpine tar czf /b/mg_data.tgz -C /v .
-docker compose start memgraph
-scp mg_data.tgz deploy@203.0.113.10:~
-```
-
-**On the server** (from `~/HTB26`):
+**On the laptop** (from the repo root, with your local stack running):
 
 ```bash
-docker compose up -d memgraph && docker compose stop memgraph    # let compose create the volume
-docker run --rm -v htb26_mg_data:/v -v ~:/b alpine sh -c 'rm -rf /v/* && tar xzf /b/mg_data.tgz -C /v'
-docker compose up -d
+python3 scripts/export_state.py                                   # writes data/state/<stamp>/ (~300 KB): graph dump, agentic cache, manifest
+rsync -av data/state/ deploy@203.0.113.10:HTB26/data/state/
 ```
 
-- **Same Postgres:** sources stored in Postgres resolve only if the server uses the same `PG_DSN`.
+**On the server** (from `~/HTB26`, with the stack running):
+
+```bash
+python3 scripts/import_state.py <stamp>       # refuses a non-empty graph; --replace wipes the server's graph first (never Postgres)
+python3 scripts/import_state.py --check       # every manifest finds its rows; spot-verifies a few results
+```
+
+- **Same Postgres, then hand it over.** The import only finds rows if the server's `PG_DSN` points at the same Postgres as the export. After the move, stop using that database from your laptop: point your local `.env` at another one. Otherwise the two graphs drift apart, and a full reset on either side deletes rows the other still uses.
 - **Old market links:** markets you created locally lived on the local chain, so "open market #N" links in old threads point at markets that don't exist on devnet.
-- **Memgraph version:** the server must run the same or a newer Memgraph (both use `memgraph/memgraph:latest`).
 
 ## Troubleshooting
 
