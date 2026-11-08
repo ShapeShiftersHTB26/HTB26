@@ -15,7 +15,7 @@ browser ──▶ Solana devnet RPC directly (wallet transactions)
 |---|---|---|
 | `web`: Caddy serving the built frontend; it gets its own HTTPS certificate | VPS | yes, 80 and 443 only |
 | `api`: research threads, ops, the agent chat | VPS | no (only through Caddy at `/api`) |
-| `memgraph`: graph store for views, proposals and threads | VPS | no (localhost only; reach it over an SSH tunnel) |
+| `memgraph`: graph store for views, proposals and threads | VPS | no (inside the docker network only) |
 | `prediction-market-backend`: markets, bots, faucet | VPS | no (only through Caddy at `/pm-api`) |
 | Postgres: the data plane (`PG_DSN`) plus the market database | your hosted provider | your provider's settings |
 | Solana devnet | public network | yes |
@@ -344,6 +344,6 @@ python3 scripts/import_state.py --check       # every manifest finds its rows; s
   - create markets, whose rent the admin wallet pays.
 
   For a private demo, set `ACCESS_CODE` in `.env`: every visitor first gets an "enter access code" page, which covers the app, `/api` and `/pm-api`. Caddy asks the api about each request (`forward_auth`, `api/app/gate.py`), and the right code sets a cookie that lasts 30 days. The browser password block in `deploy/Caddyfile` is an alternative.
-- **Keep 7687 private.** Memgraph has no password. `docker-compose.vps.yml` binds it to localhost only; keep it that way.
+- **Keep 7687 private.** Memgraph has no password. `docker-compose.vps.yml` doesn't publish it at all, not even on localhost; only the api and Lab reach it inside the docker network. To look inside, start Lab (`--profile tools`) and tunnel to port 3000.
 - **Never commit the secrets.** `.env`, `prediction-market/.env.prod` and `prediction-market/keys/` are gitignored.
 - **Security updates.** Ubuntu installs them automatically (`unattended-upgrades`). After a kernel update, reboot when convenient: `sudo reboot`.

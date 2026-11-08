@@ -1,6 +1,7 @@
 # VPS override, layered on docker-compose.yml + docker-compose.prod.yml (guide: docs/DEPLOY.md).
 # Only Caddy (the web service) is public, on 80/443. Everything else is reachable inside the compose network only;
-# Memgraph (and Lab, if started) listen on the server's localhost for SSH tunnels.
+# Memgraph has no published port at all (only the api and Lab reach it, in-network); Lab, if started, listens on the
+# server's localhost for an SSH tunnel.
 #
 # On the server, put this in .env so a plain `docker compose ...` uses all three files:
 #   COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml:docker-compose.vps.yml
@@ -27,7 +28,7 @@ services:
     restart: unless-stopped
 
   memgraph:
-    ports: !override ["127.0.0.1:7687:7687"]   # no auth: never expose publicly; reach it with ssh -L 7687:localhost:7687
+    ports: !reset []   # no auth: never published, not even on localhost; use Lab (--profile tools) to look inside
     restart: unless-stopped
 
   lab:   # Memgraph Lab, off by default: docker compose --profile tools up -d lab, then ssh -L 3000:localhost:3000
