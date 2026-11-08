@@ -235,7 +235,6 @@
 /* ---------------- trade panel ---------------- */
 .pm-trade { display: flex; flex-direction: column; gap: 14px; }
 .pm-trade-head { display: flex; justify-content: space-between; align-items: center; margin: -4px -4px 0 -6px; }
-.pm-settings { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-radius: 10px; background: var(--pm-hover); animation: pm-fade 0.15s ease-out; }
 .pm-outcomes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .pm-outcome-btn { display: flex; align-items: center; justify-content: center; gap: 8px; height: 48px; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; background: var(--pm-hover); color: var(--muted); }
 .pm-outcome-btn span { font-variant-numeric: tabular-nums; font-weight: 600; }
@@ -414,3 +413,10 @@
 .pm-data .dspark { width: 100%; height: auto; --dspark-ink: var(--accent); --dspark-line: #b7791f; --dspark-muted: var(--muted); --dspark-bg: var(--panel); --dspark-yes: rgba(24, 160, 88, 0.07); }
 .pm-rules > p:first-child { white-space: pre-line; }
 .pm-data .dspark svg { display: block; }
+
+/* ---------------- slippage warning (TradePanel) ---------------- */
+.pm-summary .pm-slip-high span, .pm-summary .pm-slip-high b { color: var(--warn); }
+.pm-slip { display: flex; flex-direction: column; gap: 12px; }
+.pm-slip p { margin: 0; line-height: 1.5; }
+.pm-slip-sum { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 10px; background: var(--warn-soft); font-variant-numeric: tabular-nums; }
+.pm-slip-actions { display: flex; justify-content: flex-end; gap: 8px; }

@@ -112,9 +112,15 @@ export function placeTakeOrderIx(
   side: 'buy' | 'sell',
   limitCents: number,
   baseLots: number,
+  /** buys: never spend more than this (mUSDC), whatever the book does before the order lands */
+  maxSpend?: number,
 ): TransactionInstruction {
   const authority = PublicKey.findProgramAddressSync([Buffer.from('Market'), b.market.toBuffer()], a.openbookId)[0];
-  const maxQuote = side === 'buy' ? baseLots * limitCents : baseLots * 100;
+  // quote lots are 0.0001 mUSDC (base lot 0.01 share × 1¢)
+  const maxQuote =
+    side === 'buy'
+      ? Math.min(baseLots * limitCents, maxSpend !== undefined ? Math.floor(maxSpend * 10_000) : Infinity)
+      : baseLots * 100;
   const data = Buffer.concat([
     PLACE_TAKE_ORDER,
     Buffer.from([side === 'buy' ? 0 : 1]), // Side
@@ -204,7 +210,15 @@ export function estimateFill(levels: Level[], size: number, limit: number, side:
     remaining -= take;
   }
   const filled = size - remaining;
-  return { filled, avgPrice: filled > 0 ? cost / filled : 0, total: cost };
+  // worst: the price of the last level the order reaches
+  let worst = 0;
+  let left = filled;
+  for (const l of levels) {
+    if (left <= 1e-9) break;
+    worst = l.price;
+    left -= l.size;
+  }
+  return { filled, avgPrice: filled > 0 ? cost / filled : 0, total: cost, worst };
 }
 
 export const mid = (l: L2): number | null =>

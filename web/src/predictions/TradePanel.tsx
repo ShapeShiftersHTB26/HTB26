@@ -4,12 +4,13 @@ import type { MarketInfo } from "./api";
 import { useAppConfig } from "./context";
 import { Balances, Books, useFaucet, useTx } from "./hooks";
 import { BASE_LOTS_PER_TOKEN, bookAddrs, ensureAtasIxs, estimateFill, newTx, placeTakeOrderIx } from "./solana";
-import { Spinner } from "./ui";
+import { Modal, Spinner } from "./ui";
 import { cents, fmt, Outcome, outcomeLabel, sharesForBudget, usd } from "./util";
 import { useSigner } from "./wallet";
 
 type Side = "buy" | "sell";
-const SLIPPAGE = [1, 2, 5, 10];
+/** Ask before an order whose average price is this many cents worse than the best price. */
+const SLIPPAGE_WARN_CENTS = 5;
 const lots = (n: number) => Math.floor(n * 100) / 100; // 0.01-share lots
 
 export default function TradePanel({
@@ -33,13 +34,13 @@ export default function TradePanel({
   const [side, setSide] = useState<Side>("buy");
   const [outcome, setOutcome] = useState<Outcome>(initialOutcome);
   const [amount, setAmount] = useState(""); // buy: dollars, sell: shares
-  const [slippage, setSlippage] = useState(2); // cents beyond the best price
-  const [settings, setSettings] = useState(false);
+  const [confirming, setConfirming] = useState(false); // the high-slippage warning is open
 
   const book = outcome === "yes" ? books.yes : books.no;
   const levels = side === "buy" ? book?.asks : book?.bids;
   const best = levels?.[0]?.price;
-  const limitCents = best === undefined ? null : Math.min(99, Math.max(1, Math.round(best * 100) + (side === "buy" ? slippage : -slippage)));
+  // No price limit: the order takes whatever the book offers (buys still never spend more than the amount).
+  const limitCents = best === undefined ? null : side === "buy" ? 99 : 1;
   const n = Number(amount) || 0;
   const held = outcome === "yes" ? bal.yes : bal.no;
   const priceOf = (o: Outcome) => (side === "buy" ? (o === "yes" ? books.yes : books.no)?.asks[0]?.price : (o === "yes" ? books.yes : books.no)?.bids[0]?.price);
@@ -50,7 +51,9 @@ export default function TradePanel({
     return estimateFill(levels, shares, limitCents / 100, side);
   }, [levels, limitCents, n, side]);
 
-  const shortBy = side === "buy" && est ? n - est.total : 0; // budget the book can't absorb within the limit
+  const shortBy = !est ? 0 : side === "buy" ? n - est.total : n - est.filled; // more than the book can take
+  // how much worse than the best price the average fill is
+  const slipCents = est && est.filled > 0 && best !== undefined ? Math.round(Math.abs(est.avgPrice - best) * 100) : 0;
   const hint: { text: string; fix?: { label: string; run: () => void } } | null = !publicKey
     ? null
     : bal.usdc <= 0 && bal.sol <= 0
@@ -64,17 +67,31 @@ export default function TradePanel({
           : bal.sol < 0.0005
             ? { text: "You need a little SOL for fees.", fix: { label: "Get funds", run: faucet.claim } }
             : est && est.filled > 0 && shortBy > 0.05
-              ? { text: `Only ${usd(est.total)} fills within your ${slippage}¢ price limit.` }
+              ? {
+                  text:
+                    side === "buy"
+                      ? `The book only has ${usd(est.total)} for sale right now.`
+                      : `Only ${fmt(est.filled)} shares can be sold right now.`,
+                  fix: { label: "Use that", run: () => setAmount(String(side === "buy" ? Math.floor(est.total * 100) / 100 : lots(est.filled))) },
+                }
               : null;
   const canSubmit = !!publicKey && !hint && !!est && est.filled >= 0.01 && !tx.busy;
 
+  /** Big orders get a warning first; "Buy anyway" sends it. */
+  const trySubmit = () => {
+    if (!canSubmit) return;
+    if (slipCents > SLIPPAGE_WARN_CENTS) setConfirming(true);
+    else submit();
+  };
+
   const submit = async () => {
+    setConfirming(false);
     if (!publicKey || !canSubmit || !est || limitCents === null) return;
     const row = outcome === "yes" ? market.yes_book! : market.no_book!;
     const mint = outcome === "yes" ? market.yes_mint! : market.no_mint!;
     const baseLots = Math.round(est.filled * BASE_LOTS_PER_TOKEN);
     const ok = await tx.run(
-      newTx([...ensureAtasIxs(addrs, market, publicKey), placeTakeOrderIx(addrs, bookAddrs(row, mint), publicKey, side, limitCents, baseLots)]),
+      newTx([...ensureAtasIxs(addrs, market, publicKey), placeTakeOrderIx(addrs, bookAddrs(row, mint), publicKey, side, limitCents, baseLots, side === "buy" ? n : undefined)]),
       `${side === "buy" ? "Bought" : "Sold"} ${fmt(est.filled)} ${outcomeLabel(outcome)}`,
       `${side === "buy" ? "Paid" : "Received"} ~${usd(est.total)} at ~${cents(est.avgPrice)} avg`,
     );
@@ -96,27 +113,7 @@ export default function TradePanel({
             </button>
           ))}
         </div>
-        <button className={`pm-icon-btn${settings ? " on" : ""}`} onClick={() => setSettings((v) => !v)} title="Price limit" aria-label="Trade settings">
-          <svg viewBox="0 0 20 20" aria-hidden>
-            <path d="M3 6h9M15 6h2M3 14h2M8 14h9" />
-            <circle cx="13.5" cy="6" r="1.8" />
-            <circle cx="6.5" cy="14" r="1.8" />
-          </svg>
-        </button>
       </div>
-
-      {settings && (
-        <div className="pm-settings">
-          <span className="pm-small">Max price move</span>
-          <div className="pm-chips pm-chips-sm">
-            {SLIPPAGE.map((s) => (
-              <button key={s} className={slippage === s ? "on" : ""} onClick={() => setSlippage(s)}>
-                {s}¢
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
       <div className="pm-outcomes">
         {(["yes", "no"] as const).map((o) => {
@@ -140,7 +137,7 @@ export default function TradePanel({
             style={{ width: `${Math.max(1, amount.length) + 0.3}ch` }} // grow with the digits so "$" stays next to them
             value={amount}
             onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1"))}
-            onKeyDown={(e) => e.key === "Enter" && submit()}
+            onKeyDown={(e) => e.key === "Enter" && trySubmit()}
           />
         </span>
       </label>
@@ -164,6 +161,10 @@ export default function TradePanel({
 
       <div className={`pm-summary${est && est.filled > 0 ? " show" : ""}`}>
         <div><span>Avg price</span><b>{est && est.filled > 0 ? cents(est.avgPrice) : "—"}</b></div>
+        <div className={slipCents > SLIPPAGE_WARN_CENTS ? "pm-slip-high" : ""}>
+          <span>Slippage</span>
+          <b>{est && est.filled > 0 ? `${slipCents}¢` : "—"}</b>
+        </div>
         {side === "buy" ? (
           <>
             <div><span>Shares</span><b>{est ? fmt(est.filled) : "—"}</b></div>
@@ -192,7 +193,7 @@ export default function TradePanel({
       )}
 
       {publicKey ? (
-        <button className={`pm-btn pm-btn-block pm-btn-lg pm-trade-btn ${outcome}`} disabled={!canSubmit} onClick={submit}>
+        <button className={`pm-btn pm-btn-block pm-btn-lg pm-trade-btn ${outcome}`} disabled={!canSubmit} onClick={trySubmit}>
           {tx.busy ? (
             <>
               <Spinner /> Confirming…
@@ -211,7 +212,35 @@ export default function TradePanel({
           </button>
         </>
       )}
-      <p className="pm-fine">Fills instantly against the order book; anything that can't fill within your price limit is cancelled.</p>
+      <p className="pm-fine">
+        Fills instantly at the best prices in the order book. Big orders move the price: you'll be asked to confirm above{" "}
+        {SLIPPAGE_WARN_CENTS}¢ of slippage.
+      </p>
+
+      {confirming && est && best !== undefined && (
+        <Modal title="High slippage" onClose={() => setConfirming(false)}>
+          <div className="pm-slip">
+            <p>
+              This order moves the price by about <b>{slipCents}¢</b>. The best price is {cents(best)}, but you'd{" "}
+              {side === "buy" ? "pay" : "get"} <b>{cents(est.avgPrice)}</b> per share on average, and the last shares go at{" "}
+              {cents(est.worst)}.
+            </p>
+            <div className="pm-slip-sum">
+              <span>{side === "buy" ? `${fmt(est.filled)} ${outcomeLabel(outcome)} shares` : `${fmt(est.filled)} shares sold`}</span>
+              <b>{side === "buy" ? `for ${usd(est.total)}` : `for ${usd(est.total)}`}</b>
+            </div>
+            <p className="pm-muted pm-small">A smaller order fills closer to the best price.</p>
+            <div className="pm-slip-actions">
+              <button className="pm-btn" onClick={() => setConfirming(false)}>
+                Cancel
+              </button>
+              <button className={`pm-btn pm-trade-btn ${outcome}`} onClick={submit} autoFocus>
+                {side === "buy" ? "Buy" : "Sell"} anyway
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
