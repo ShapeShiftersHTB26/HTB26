@@ -18,6 +18,13 @@ Ask: *can this view be computed directly from an existing view in about 1–4 si
 
 **When the leaf needs raw data that no source view has** (or the user hasn't picked a dataset yet in a research thread), don't invent a source. Use `find-dataset` to offer one, and continue once a source view exists.
 
+**Big sources (100k+ rows, e.g. EPC with 757k rows and 93 columns):** cut them down in the **first** step that reads them.
+- Filter to the place and period the question needs, then keep only the columns you use.
+- Aggregate as early as the question allows.
+- Aim for a result of hundreds to a few thousand rows: the size of answer you'd expect to look at.
+- Never build a view that copies a big source whole or nearly whole.
+- Check `row_count` with `get_view` / `get_records` before you build on a source.
+
 Make sure the transform honours the target's **grain and scope**: the scope usually becomes filters, and the grain usually becomes the aggregate's `by`.
 
 Choose the transform kind:
