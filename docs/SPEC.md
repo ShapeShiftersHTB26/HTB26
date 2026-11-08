@@ -111,6 +111,21 @@ Indexes: `:Record(rid)`, plus `:View(id)`, `:SchemaVersion(id)`, `:Transform(id)
     - the latest focus.
 
     Messages carry `focus` (view ids), from the user's selected node or from the agent's `say(focus=…)`.
+  - **Workspace:** a thread is a workspace that can hold several questions. Each one is an intent with `parent_id`; `canvas.questions` gives each question's tables and its answer.
+    - **The canvas is laid out in bands:** questions on top, computed tables in the middle, sources on the data shelf at the bottom.
+    - **Tables are compact** unless they're focused, have something pending, or are the answer to the selected question.
+    - **Selecting a question** highlights its chain; tables carry a coloured dot for each question that uses them.
+    - **The left panel** has two tabs: Questions (with **+ Question**, sent as "New question: …") and Tables (with **+ Data**).
+- **Notebook (the receipt)** (`api/app/notebook.py`):
+  - `get_notebook(view_id)` gives the steps that produced the view's latest instance, following its actual inputs, sources first. Each cell has its code, rationale, lineage level, rows and fingerprint; ops are rendered as plain pandas, with `_src=('_rid', rids)` keeping row lineage through aggregations.
+  - `preview_transform(view_id, code)` runs edited code without storing anything.
+  - `export_notebook(view_id, format=py|ipynb)` writes a pandas script that rebuilds the result from the source CSVs. Agentic steps are embedded as their stored output.
+  - **The escape hatch** is transform kind `python`, with spec `{code}`. The inputs are variables named after the input views (with `_rid`), and the code assigns its result to `df`. Row lineage is kept only if the output keeps `_rid` or `_src`; otherwise it's coarse. Verify re-runs it like ops.
+  - Open a notebook from a table's ⟨/⟩ button, or with `#/t/<thread>/nb/<view>`.
+- **Big CSVs:** `scripts/load_big_csv.py` is a one-off loader outside the api (see its docstring).
+  1. It scans the whole file to infer column types.
+  2. It streams the rows into Postgres in chunks.
+  3. It hashes the stored rows the way `verify` does, then writes the usual manifests.
   - The flow is described in [BRIEF-flow.md](BRIEF-flow.md).
 - **`result_current`** follows the result visual's revision tree, so approving a revision updates the outcome automatically.
 - **Mode:** `auto` means the agent approves its own steps and the user inspects the path afterwards. `guided` is step-by-step approval. The default is auto when anchored, guided for a fresh question.

@@ -208,5 +208,6 @@ export type Thread = {
     notes: import("./research/nodes").Note[];
     open_datasets: string[];
     focus: string[] | null;
+    questions: import("./research/nodes").Question[];
   };
 };

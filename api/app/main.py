@@ -9,7 +9,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from mcp.server.fastmcp import FastMCP
 
-from . import graph, markets, ops, pg, thread  # noqa: F401  (imports register operations)
+from . import graph, markets, notebook, ops, pg, thread  # noqa: F401  (imports register operations)
 from . import worker as thread_worker
 from .registry import REGISTRY, REST_ONLY
 

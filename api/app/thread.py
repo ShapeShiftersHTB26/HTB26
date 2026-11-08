@@ -314,7 +314,25 @@ def _canvas(ids: list[str], items: list[dict], thread_intents: list[dict], views
         elif i["type"] == "message" and i.get("kind") == "source":
             open_datasets = []
     focus = next((i.get("focus") for i in reversed(items) if i["type"] == "message" and i.get("focus")), None)
-    return {"nodes": nodes, "edges": edges, "notes": notes, "open_datasets": open_datasets, "focus": focus}
+    # every question in the workspace, with the tables proposed while serving it and its answer
+    on_canvas = {n["id"] for n in nodes}
+    questions = []
+    for q in thread_intents:
+        vids = []
+        for i in items:
+            p = i.get("proposal") if i["type"] == "proposal" else None
+            if p and p.get("intent_id") == q["id"] and p["status"] != "discarded" and p["view_id"] not in vids:
+                vids.append(p["view_id"])
+        for a in q.get("anchors") or []:
+            if a not in vids:
+                vids.append(a)
+        if q.get("result_view_id") and q["result_view_id"] not in vids:
+            vids.append(q["result_view_id"])
+        questions.append({"id": q["id"], "text": q["text"], "status": q["status"], "summary": q.get("summary"),
+                          "parent_id": q.get("parent_id"), "result_view_id": q.get("result_view_id"),
+                          "views": [v for v in vids if v in on_canvas]})
+    return {"nodes": nodes, "edges": edges, "notes": notes, "open_datasets": open_datasets, "focus": focus,
+            "questions": questions}
 
 
 # ---------------------------------------------------------------- agent tools (MCP)

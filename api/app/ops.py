@@ -448,12 +448,17 @@ def propose_transform(view_id: str, kind: str, spec: dict, rationale: str, reads
       {"op":"derive","column":"change_pct","expr":"(median_price.pct_change() * 100).round(1)"} (or .shift(), .cumsum()).
     - kind "agent_map": spec {prompt, batch_size} — LLM adds fields per row
     - kind "agent_reduce": spec {prompt, max_rows} — LLM judges the whole table, cites source rows
+    - kind "python": spec {"code": "..."} — the notebook escape hatch: pandas over the inputs (variables named
+      after the input views, with _rid; with one input also as `df`), assigning the output to `df`. Row lineage
+      only if the output keeps _rid or a _src list; prefer ops when they can express the step.
     To revise, pass parent_id = the transform being revised. Returns id, new input view ids and
     warnings from a static column check (fix warnings with a sibling before asking the user).
     intent_id: the Intent this step serves (from start_intent) - always pass it."""
     _check_intent(intent_id)
-    if kind not in ("ops", "agent_map", "agent_reduce"):
-        raise ValueError("kind must be ops | agent_map | agent_reduce")
+    if kind not in ("ops", "agent_map", "agent_reduce", "python"):
+        raise ValueError("kind must be ops | agent_map | agent_reduce | python")
+    if kind == "python" and not isinstance((spec or {}).get("code"), str):
+        raise ValueError('python transforms need spec {"code": "..."}')
     target = _head_schema(view_id, allow_pending=True)
     if target is None:
         raise ValueError(f"view '{view_id}' has no shape yet; propose_schema first")

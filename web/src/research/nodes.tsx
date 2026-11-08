@@ -46,11 +46,26 @@ function useAct() {
 
 // ------------------------------------------------------------------------------------------- question / notes
 
+export type Question = {
+  id: string;
+  text: string;
+  status: string;
+  summary?: string;
+  parent_id?: string;
+  result_view_id?: string;
+  views: string[];
+};
+
 export function QuestionNode({ data }: NodeProps) {
+  const q = data.q as Question;
+  const color = data.color as string;
   return (
-    <div className="rnode question">
-      <div className="label">research question</div>
-      <div className="q">“{data.text as string}”</div>
+    <div className={`rnode question ${data.active ? "active" : ""}`} style={{ borderColor: color, boxShadow: data.active ? `0 0 0 3px ${color}55` : undefined }}>
+      <div className="label">
+        <span className="qdot" style={{ background: color }} /> question {data.n as number} · {q.status === "answered" ? "answered ✓" : "open"}
+      </div>
+      <div className="q">“{q.text}”</div>
+      {q.summary && <div className="qsum" title={q.summary}>{q.summary}</div>}
       <Handle type="source" position={Position.Bottom} />
     </div>
   );
@@ -116,7 +131,7 @@ function fmt(v: any, c?: Column) {
 
 export function TableNode({ data }: NodeProps) {
   const v = data.view as CanvasView;
-  const { t, send, reload, focus, onOpenVisual, onTrace } = useThread();
+  const { t, send, reload, focus, onOpenVisual, onTrace, openNotebook } = useThread();
   const { busy, act } = useAct();
   const [rows, setRows] = useState<Record<string, any>[] | null>(null);
   const [market, setMarket] = useState(false);
@@ -143,16 +158,46 @@ export function TableNode({ data }: NodeProps) {
   // a computed table with a number on it can become a prediction market settled by its own calculation
   const canMarket =
     real && v.kind === "derived" && columns(head?.schema).some((c) => c.role === "measure" && (c.type === "number" || c.type === "integer"));
+  const qcolors = (data.colors as string[]) || [];
+
+  if (data.compact)
+    return (
+      <div className={`rnode table compact ${v.kind} ${v.answer ? "answer" : ""}`} title="click to expand">
+        <Handles />
+        <div className="tn-head">
+          {qcolors.map((c) => <span key={c} className="qdot" style={{ background: c }} />)}
+          <span className={`tn-kind ${v.kind}`}>{v.answer ? "answer" : v.kind === "source" ? "source" : "table"}</span>
+          <b className="tn-name">{v.name}</b>
+          <button className="nb-open nodrag" title="The steps behind this table, as code" onClick={(e) => (e.stopPropagation(), openNotebook(v.id))}>
+            ⟨/⟩
+          </button>
+        </div>
+        <div className="chips">
+          {columns(head?.schema).slice(0, 6).map((c) => <span key={c.name} className="chip col">{c.name}</span>)}
+          {columns(head?.schema).length > 6 && <span className="muted small">+{columns(head?.schema).length - 6}</span>}
+        </div>
+        <div className="muted small">
+          {v.instance ? `${(v.instance.row_count ?? 0).toLocaleString()} rows` : "not computed yet"}
+          {v.instance?.hash && <> · fingerprint <code className="hash">{v.instance.hash.slice(0, 10)}…</code></>}
+        </div>
+      </div>
+    );
 
   return (
     <div className={`rnode table ${v.kind} ${isNew ? "proposed" : ""} ${v.answer ? "answer" : ""} ${focus === v.id ? "focused" : ""}`}>
       <Handles />
       <div className="tn-head">
+        {qcolors.map((c) => <span key={c} className="qdot" style={{ background: c }} />)}
         <span className={`tn-kind ${v.kind}`}>{v.answer ? "answer" : v.kind === "source" ? "source" : isNew ? "proposed table" : "table"}</span>
         <b className="tn-name">{v.name}</b>
         <span className="muted small">
           {real ? `${(v.instance?.row_count ?? 0).toLocaleString()} rows` : head || pend ? "preview" : ""}
         </span>
+        {head && (
+          <button className="nb-open nodrag" title="The steps behind this table, as code" onClick={() => openNotebook(v.id)}>
+            ⟨/⟩
+          </button>
+        )}
       </div>
       {v.answer && <div className="answer">{v.answer}</div>}
       {(head || pend) && (

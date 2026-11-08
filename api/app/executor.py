@@ -98,6 +98,30 @@ def _formula(transform: dict, shape: dict, input_formulas: list[str]) -> str:
     return H.formula_hash(transform["kind"], transform.get("spec") or {}, shape["schema"], input_formulas)
 
 
+def rids(s) -> list:
+    """Lineage helper for notebook code: collect the source row ids of a group, e.g.
+    .agg(avg=("price", "mean"), _src=("_rid", rids)); also flattens existing _src lists."""
+    return [r for x in s for r in (x if isinstance(x, list) else [x])]
+
+
+def run_python(code: str, frames: dict) -> pd.DataFrame:
+    """The notebook escape hatch: user/agent Python over the input frames (named after their views, with _rid).
+    Must assign the output to `df`. Lineage: kept if the output has _src (lists of rids) or _rid (row-preserving
+    steps), otherwise none. HACK: exec of user code - local demo only."""
+    import numpy as np
+    env = {"pd": pd, "np": np, "rids": rids, **{name: f.copy() for name, f in frames.items()}}
+    if len(frames) == 1:
+        env.setdefault("df", next(iter(env[n] for n in frames)))
+    exec(compile(code, "<notebook cell>", "exec"), env)  # noqa: S102
+    out = env.get("df")
+    if not isinstance(out, pd.DataFrame):
+        raise ValueError("the cell must assign its output DataFrame to `df`")
+    out = out.reset_index(drop=("index" not in out.columns and out.index.name is None))
+    if "_src" not in out.columns and "_rid" in out.columns:
+        out["_src"] = out["_rid"].map(lambda r: [r])
+    return out
+
+
 def _compute(transform: dict, shape: dict, frames: dict) -> tuple[list[dict], list | None, int, str | None]:
     """Run a transform over input frames; validate against the shape. Returns (rows, srcs, invalid, model)."""
     from .transforms import ops as OPS
@@ -105,6 +129,8 @@ def _compute(transform: dict, shape: dict, frames: dict) -> tuple[list[dict], li
     model = None
     if transform["kind"] == "ops":
         out = OPS.run(frames, transform["spec"])
+    elif transform["kind"] == "python":
+        out = run_python(transform["spec"]["code"], frames)
     elif transform["kind"] in ("agent_map", "agent_reduce"):
         from .transforms import agentic as AG
         fn = AG.run_map if transform["kind"] == "agent_map" else AG.run_reduce
@@ -264,7 +290,7 @@ def verify(instance_id: str, recompute: bool = True, _seen: dict | None = None) 
         in_nodes = [instance_node(x) for x in ins]
         formula = _formula(transform, shape, [x["formula_hash"] for x in in_nodes])
         recomputed = H.instance_hash(formula, root, [x["hash"] for x in in_nodes])
-        if recompute and transform["kind"] == "ops":
+        if recompute and transform["kind"] in ("ops", "python"):
             names = {x["v"]["id"]: x["v"]["name"] for x in g.run(
                 "MATCH (:Instance {id:$i})-[:FROM]->(j:Instance)-[:OF]->(v:View) RETURN v", i=instance_id)}
             frames = {names[x["view_id"]]: load_frame(x["id"]) for x in in_nodes}
@@ -272,7 +298,7 @@ def verify(instance_id: str, recompute: bool = True, _seen: dict | None = None) 
             mem = ({"_rid": f"{instance_id}:{k}", **row, **({"_src": srcs[k]} if srcs else {})}
                    for k, row in enumerate(rows))
             checks["recomputed"] = H.data_root(mem)[0] == root
-        elif transform["kind"] != "ops":
+        elif transform["kind"] not in ("ops", "python"):
             checks["recomputed"] = None  # agentic: stored model output, replayable but not recomputable
             node["note"] = "agentic step: verified against its stored output (not re-run)"
     checks["formula"] = formula == i.get("formula_hash")

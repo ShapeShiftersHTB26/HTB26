@@ -10,6 +10,9 @@ export type ThreadCtx = {
   setFocus: (id: string | null) => void;
   onOpenVisual: (visualId: string, viewId: string) => void;
   onTrace: (rid: string) => void;
+  openNotebook: (viewId: string) => void;
+  activeQ: string | null;
+  setActiveQ: (id: string | null) => void;
 };
 
 export const Ctx = createContext<ThreadCtx | null>(null);

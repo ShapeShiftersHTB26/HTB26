@@ -2,6 +2,8 @@ import { ReactFlowProvider } from "@xyflow/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { op, Thread } from "../api";
 import ChatWindow from "./ChatWindow";
+import Notebook from "./Notebook";
+import Outline from "./Outline";
 import { Ctx, Send } from "./ctx";
 import { Rail } from "./Landing";
 import ResearchCanvas from "./ResearchCanvas";
@@ -17,6 +19,9 @@ export default function ThreadView(props: {
   const [focus, setFocus] = useState<string | null>(null);
   const [noting, setNoting] = useState(false);
   const [noteText, setNoteText] = useState("");
+  // #/t/<thread>/nb/<view> opens that table's notebook directly (handy for sharing a receipt)
+  const [notebook, setNotebook] = useState<string | null>(() => window.location.hash.match(/\/nb\/([\w-]+)/)?.[1] ?? null);
+  const [activeQ, setActiveQ] = useState<string | null>(null);
   const seen = useRef<number | null>(null);
 
   const load = useCallback(
@@ -67,8 +72,9 @@ export default function ThreadView(props: {
   if (err && !t) return <div className="error pad">{err}</div>;
   if (!t) return <div className="muted pad">loading…</div>;
   return (
-    <Ctx.Provider value={{ t, send, reload: load, focus, setFocus, onOpenVisual: props.onOpenVisual, onTrace: props.onTrace }}>
-      <div className="thread-canvas">
+    <Ctx.Provider value={{ t, send, reload: load, focus, setFocus, onOpenVisual: props.onOpenVisual, onTrace: props.onTrace,
+                          openNotebook: setNotebook, activeQ, setActiveQ }}>
+      <div className={`thread-canvas ${notebook ? "with-notebook" : ""}`}>
         <div className="thread-bar">
           <Rail stage={t.stage} future={t.stage === "explore"} />
           <span className="grow" />
@@ -83,9 +89,13 @@ export default function ThreadView(props: {
             <button onClick={() => setNoting(true)}>+ Note</button>
           )}
         </div>
-        <ReactFlowProvider>
-          <ResearchCanvas />
-        </ReactFlowProvider>
+        <div className="ws-body">
+          <Outline />
+          <ReactFlowProvider>
+            <ResearchCanvas />
+          </ReactFlowProvider>
+        </div>
+        {notebook && <Notebook key={notebook} viewId={notebook} onClose={() => setNotebook(null)} />}
         <ChatWindow />
       </div>
     </Ctx.Provider>
