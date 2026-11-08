@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { op } from "../api";
 import { useThread } from "./ctx";
+import { DataGrid, rowsLabel } from "./table";
 
 type Cell = {
   view_id: string;
@@ -146,7 +147,7 @@ function CellView(props: { c: Cell; n: number; last: boolean; onChanged: () => v
         <span className="grow" />
         {c.instance && (
           <>
-            <span className="muted small">{(c.instance.row_count ?? 0).toLocaleString()} rows</span>
+            <span className="muted small">{rowsLabel(c.instance.row_count ?? 0)}</span>
             <code className="hash" title={c.instance.hash}>{(c.instance.hash || "").slice(0, 12)}…</code>
             <button disabled={busy} onClick={verify}>{ver === null ? "Verify" : ver ? "verified ✓" : "MISMATCH ✗"}</button>
           </>
@@ -158,20 +159,7 @@ function CellView(props: { c: Cell; n: number; last: boolean; onChanged: () => v
           preview: {preview.row_count.toLocaleString()} rows · lineage {preview.lineage} · not stored
         </div>
       )}
-      {shown.length > 0 && (
-        <div className="nb-out">
-          <table>
-            <thead>
-              <tr>{cols.map((k) => <th key={k}>{k}</th>)}</tr>
-            </thead>
-            <tbody>
-              {shown.slice(0, 5).map((r, i) => (
-                <tr key={i}>{cols.map((k) => <td key={k}>{fmt(r[k])}</td>)}</tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {shown.length > 0 && <DataGrid className="nb-out" cols={cols.map((name) => ({ name }))} rows={shown.slice(0, 5)} />}
       {c.pending.map((p) => (
         <div key={p.id} className="tn-proposal step">
           <div className="small">
@@ -186,11 +174,4 @@ function CellView(props: { c: Cell; n: number; last: boolean; onChanged: () => v
       ))}
     </section>
   );
-}
-
-function fmt(v: any) {
-  if (v === null || v === undefined) return "";
-  if (typeof v === "number") return Number.isInteger(v) ? String(v) : v.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
 }

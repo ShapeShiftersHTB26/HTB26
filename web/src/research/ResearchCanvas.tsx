@@ -32,16 +32,18 @@ export function questionChains(c: Thread["canvas"]): Map<string, Set<string>> {
 // Rough rendered sizes, so dagre leaves room before nodes are measured.
 function tableSize(v: CanvasView, compact: boolean): [number, number] {
   const shape = v.pending_schemas[v.pending_schemas.length - 1] || v.head_schema;
-  const ncols = columns(shape?.schema).length;
-  if (compact) return [360, 110];
+  // a proposed change shows old and new columns side by side, so size for both
+  const ncols = new Set([...columns(v.head_schema?.schema), ...columns(shape?.schema)].map((c) => c.name)).size;
+  if (compact) return [340, 92];
   const rows = v.instance ? Math.min(6, v.instance.row_count ?? 0) : Math.min(6, (shape?.preview || []).length);
-  let h = 92 + (ncols ? 30 + rows * 26 : 0) + 22;
-  if (v.answer) h += 60;
-  if (v.pending_schemas.length) h += 86;
-  h += v.pending_transforms.length * 96;
-  if (v.visuals.length) h += 40;
-  if (v.instance && v.member && v.kind !== "source") h += 110;
-  if (v.instance && v.answer) h += 44;
+  let h = 100 + (ncols ? 34 + rows * 27 + 22 : 0);
+  if (shape?.scope?.length) h += 32;
+  if (v.pending_schemas.length) h += 110;
+  h += v.pending_transforms.length * 110;
+  h += v.visuals.filter((x) => x.status === "pending").length * 100;
+  if (v.visuals.some((x) => x.status !== "pending") || (v.instance && v.kind !== "source")) h += 42;
+  if (v.instance && v.member && v.kind !== "source") h += 96;
+  if (v.instance || v.head_transform) h += 44;
   return [Math.min(620, Math.max(380, ncols * 110)), h];
 }
 

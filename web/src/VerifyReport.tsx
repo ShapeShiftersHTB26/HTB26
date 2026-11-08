@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { op } from "./api";
+import Icon from "./Icon";
 
 const short = (h?: string) => (h ? `${h.slice(0, 10)}…` : "—");
 const mark = (v: boolean | null | undefined) => (v === true ? "✓" : v === false ? "✗" : "–");
@@ -34,19 +35,66 @@ function Node({ n, depth }: { n: any; depth: number }) {
   );
 }
 
+/** One line per table in the verified chain, details on hover (for the compact card footer). */
+function Line({ n, depth }: { n: any; depth: number }) {
+  const ok = n.batch_id ? !Object.values(n.checks).includes(false) : n.ok;
+  const checks = Object.entries(n.checks || {}).map(([k, v]) => `${k} ${mark(v as boolean)}`).join(" · ");
+  return (
+    <>
+      <div className="vr-line" style={{ paddingLeft: depth * 14 }} title={`${checks}\n${n.stored_hash || ""}`}>
+        <span className={ok ? "good" : "bad"}>{ok ? "✓" : "✗"}</span>
+        <span className="vr-name">{n.batch_id ? `source file ${n.batch_id}` : n.view_name}</span>
+        <span className="muted">{(n.rows ?? 0).toLocaleString()} rows</span>
+      </div>
+      {(n.inputs || []).map((c: any) => (
+        <Line key={c.instance_id || c.batch_id} n={c} depth={depth + 1} />
+      ))}
+    </>
+  );
+}
+
 // Hash of an instance + a Verify button that recomputes the whole hash tree down to the source files.
-export default function VerifyReport(props: { instanceId: string; hash?: string; label?: string }) {
+export default function VerifyReport(props: { instanceId: string; hash?: string; label?: string; compact?: boolean }) {
   const [report, setReport] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [open, setOpen] = useState(true);
   const run = () => {
     setBusy(true);
     setErr(null);
     op("verify", { instance_id: props.instanceId })
-      .then(setReport)
+      .then((r) => (setReport(r), setOpen(true)))
       .catch((e) => setErr(e.message))
       .finally(() => setBusy(false));
   };
+  if (props.compact)
+    return (
+      <div className="vr-compact">
+        <div className="vr-row">
+          <span className="vr-chip" title={`Fingerprint of this result: ${props.hash || "not hashed"}`}>
+            <Icon name="shield" size={13} />
+            <code>{props.hash ? props.hash.slice(0, 8) : "—"}</code>
+          </span>
+          {report ? (
+            <button className={`vr-status ${report.ok ? "good" : "bad"}`} onClick={() => setOpen(!open)}
+                    title={open ? "Hide the checks" : "Show the checks"}>
+              {report.ok ? "Verified" : "Mismatch"}
+            </button>
+          ) : (
+            <button className="linkish" disabled={busy || !props.hash} onClick={run}
+                    title="Recompute the hashes down to the source files">
+              {busy ? "Verifying…" : "Verify"}
+            </button>
+          )}
+        </div>
+        {err && <div className="error small">{err}</div>}
+        {report && open && (
+          <div className="vr-lines">
+            <Line n={report} depth={0} />
+          </div>
+        )}
+      </div>
+    );
   return (
     <div className="verify">
       <div className="verify-bar">

@@ -1,10 +1,13 @@
 import { Handle, NodeProps, Position } from "@xyflow/react";
-import { useEffect, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Column, columns, Dataset, op, Proposal } from "../api";
+import Icon from "../Icon";
 import VerifyReport from "../VerifyReport";
 import { useThread } from "./ctx";
 import MarketDraft from "./MarketDraft";
+import "./nodes.css";
+import { DataGrid, DiffState, GridCol, prettyName, rowsLabel, sentence } from "./table";
 
 export type CanvasView = {
   id: string;
@@ -60,17 +63,24 @@ export type Question = {
 export function QuestionNode({ data }: NodeProps) {
   const q = data.q as Question;
   const color = data.color as string;
+  const answered = q.status === "answered";
   return (
-    <div className={`rnode question ${data.active ? "active" : ""}`} style={{ borderColor: color, boxShadow: data.active ? `0 0 0 3px ${color}55` : undefined }}>
-      <div className="label">
-        <span className="qdot" style={{ background: color }} /> question {data.n as number} · {q.status === "answered" ? "answered ✓" : "open"}
+    <div className={`rnode question ${data.active ? "active" : ""}`}
+         style={{ borderTopColor: color, boxShadow: data.active ? `0 0 0 3px ${color}33, 0 6px 20px rgba(0,0,0,.08)` : undefined }}>
+      <div className="qn-eyebrow">
+        <span className="qdot" style={{ background: color }} />
+        Question {data.n as number}
+        <span className={`qn-status ${answered ? "answered" : "open"}`}>{answered ? "Answered" : "Open"}</span>
       </div>
-      <div className="q">“{q.text}”</div>
+      <div className="q">{q.text}</div>
       <MiniRail stage={q.stage} />
       {q.summary && (
         <div className="qanswer">
-          <div className="label">answer</div>
-          {q.summary}
+          <Icon name="check" size={15} />
+          <div>
+            <div className="qanswer-label">Answer</div>
+            {q.summary}
+          </div>
         </div>
       )}
       <Handle type="source" position={Position.Bottom} />
@@ -99,8 +109,8 @@ export function NoteNode({ data }: NodeProps) {
   return (
     <div className={`rnode note by-${n.author}`}>
       <Handle type="target" position={Position.Top} />
+      <div className="note-by">{n.author === "user" ? "Your note" : "Agent note"}</div>
       <div className="note-text">{n.text}</div>
-      <div className="muted small">{n.author === "user" ? "your note" : "agent note"}</div>
       <Handle type="source" position={Position.Bottom} />
     </div>
   );
@@ -108,7 +118,7 @@ export function NoteNode({ data }: NodeProps) {
 
 // ------------------------------------------------------------------------------------------- table node
 
-type DiffCol = Column & { st: "same" | "added" | "removed" | "changed" | "new" };
+type DiffCol = Column & { st: DiffState };
 
 function diffColumns(head: Proposal | null, pend: Proposal | null): DiffCol[] {
   const h = columns(head?.schema);
@@ -144,12 +154,72 @@ function nextPeriod(cols: Column[], rows: Record<string, any>[]) {
   return { col: tc.name, last, next: last + 1 };
 }
 
-function fmt(v: any, c?: Column) {
-  if (v === null || v === undefined || v === "") return "";
-  if (typeof v === "number" && c && (c.role === "time" || /year/i.test(c.name))) return String(v);
-  if (typeof v === "number") return Number.isInteger(v) ? v.toLocaleString() : v.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
+type Kind = "answer" | "source" | "proposed" | "table";
+const KIND_LABEL: Record<Kind, string> = { answer: "Answer", source: "Source data", proposed: "Proposed table", table: "Table" };
+// how a table is computed, said only when it changes how far rows can be traced (plain ops are the default)
+const STEP_TAG: Record<string, string> = { python: "Python", agent_map: "AI, row by row", agent_reduce: "AI summary" };
+
+/** Small caps line above a card's title: which questions use it, what it is, how big it is, and its tools. */
+function Eyebrow(props: { colors: string[]; kind: Kind; meta?: string; review?: boolean; children?: ReactNode }) {
+  return (
+    <div className="tn-eyebrow">
+      {props.colors.length > 0 && (
+        <span className="tn-qdots" title="Questions that use this table">
+          {props.colors.map((c) => <i key={c} style={{ background: c }} />)}
+        </span>
+      )}
+      <span className={`tn-kind k-${props.kind}`}>{KIND_LABEL[props.kind]}</span>
+      {props.meta && <span className="tn-meta">{props.meta}</span>}
+      {props.review && <span className="tn-pill warn">Needs review</span>}
+      <span className="grow" />
+      {props.children}
+    </div>
+  );
+}
+
+/** A decision waiting on the user: what is proposed, why, and Accept / Discard. */
+function Review(props: {
+  tone: "shape" | "step" | "visual";
+  title: string;
+  note?: ReactNode;
+  why?: string;
+  warnings?: string[];
+  busy: boolean;
+  waiting?: string;
+  onAccept: () => void;
+  onDiscard: () => void;
+  onPreview?: () => void;
+}) {
+  return (
+    <div className={`tn-review ${props.tone} nodrag`}>
+      <div className="tn-review-head">
+        <b>{props.title}</b>
+        {props.note && <span className="tn-review-note">{props.note}</span>}
+      </div>
+      {props.why && <div className="tn-review-why" title={props.why}>{props.why}</div>}
+      {!!props.warnings?.length && (
+        <ul className="tn-warn">
+          {props.warnings.map((w) => <li key={w}>{w}</li>)}
+        </ul>
+      )}
+      {props.waiting ? (
+        <div className="tn-review-wait">{props.waiting}</div>
+      ) : (
+        <div className="tn-btns">
+          {props.onPreview && (
+            <button className="btn" onClick={props.onPreview}>
+              <Icon name="chart" /> Preview
+            </button>
+          )}
+          <span className="grow" />
+          <button className="btn" disabled={props.busy} onClick={props.onDiscard}>Discard</button>
+          <button className="btn primary" disabled={props.busy} onClick={props.onAccept}>
+            <Icon name="check" /> Accept
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function TableNode({ data }: NodeProps) {
@@ -158,6 +228,7 @@ export function TableNode({ data }: NodeProps) {
   const { busy, act } = useAct();
   const [rows, setRows] = useState<Record<string, any>[] | null>(null);
   const [market, setMarket] = useState(false);
+  const [scopeOpen, setScopeOpen] = useState<boolean | null>(null);
   const iid = v.instance?.id;
   useEffect(() => {
     if (!iid) return setRows(null);
@@ -171,137 +242,228 @@ export function TableNode({ data }: NodeProps) {
   const real = !!rows;
   const shown: Record<string, any>[] = real ? rows! : (pend?.preview || head?.preview || []).slice(0, 6);
   const headPreviewN = (head?.preview || []).length;
-  const scope = diffList(head?.scope, pend ? pend.scope : head?.scope);
-  const grainChanged = head && pend && head.grain !== pend.grain;
+  const isNew = !!pend && !head;
+  // a brand-new table has nothing to diff against: its scope is shown plainly (and open, since it's under review)
+  const scope = isNew ? (pend!.scope || []).map((x: string) => ({ x, st: "same" })) : diffList(head?.scope, pend ? pend.scope : head?.scope);
+  const scopeChanged = scope.some((s: { st: string }) => s.st !== "same");
+  const grainChanged = !!(head && pend && head.grain !== pend.grain);
+  const grain = (pend || head)?.grain as string | undefined;
   const future = real && v.member && !/estimate|projection|forecast/i.test(v.name) ? nextPeriod(columns(head?.schema), rows!) : null;
   const added = cols.filter((c) => c.st === "added").length;
   const removed = cols.filter((c) => c.st === "removed").length;
-  const isNew = !!pend && !head;
-  const names = (ids: string[]) => ids.map((i) => t.names[i] || i).join(", ");
+  const names = (ids: string[]) => ids.map((i) => prettyName(t.names[i] || i)).join(", ");
   // a computed table with a number on it can become a prediction market settled by its own calculation
   const canMarket =
     real && v.kind === "derived" && columns(head?.schema).some((c) => c.role === "measure" && (c.type === "number" || c.type === "integer"));
   const qcolors = (data.colors as string[]) || [];
-
-  if (data.compact)
-    return (
-      <div className={`rnode table compact ${v.kind} ${v.answer ? "answer" : ""}`} title="click to expand">
-        <Handles />
-        <div className="tn-head">
-          {qcolors.map((c) => <span key={c} className="qdot" style={{ background: c }} />)}
-          <span className={`tn-kind ${v.kind}`}>{v.answer ? "answer" : v.kind === "source" ? "source" : "table"}</span>
-          <b className="tn-name">{v.name}</b>
-          <button className="nb-open nodrag" title="The steps behind this table, as code" onClick={(e) => (e.stopPropagation(), openNotebook(v.id))}>
-            ⟨/⟩
-          </button>
-        </div>
-        <div className="chips">
-          {columns(head?.schema).slice(0, 6).map((c) => <span key={c.name} className="chip col">{c.name}</span>)}
-          {columns(head?.schema).length > 6 && <span className="muted small">+{columns(head?.schema).length - 6}</span>}
-        </div>
-        <div className="muted small">
-          {v.instance ? `${(v.instance.row_count ?? 0).toLocaleString()} rows` : "not computed yet"}
-          {v.instance?.hash && <> · fingerprint <code className="hash">{v.instance.hash.slice(0, 10)}…</code></>}
-        </div>
-      </div>
+  const total = v.instance?.row_count ?? 0;
+  const kind: Kind = v.answer ? "answer" : v.kind === "source" ? "source" : isNew ? "proposed" : "table";
+  const visualsPending = v.visuals.filter((x) => x.status === "pending");
+  const visualsReady = v.visuals.filter((x) => x.status !== "pending");
+  const reviewCount = (pend ? 1 : 0) + v.pending_transforms.length + visualsPending.length;
+  const rowsText = v.instance ? rowsLabel(total) : head || pend ? "not computed yet" : "";
+  const codeBtn = (stop: boolean) =>
+    head && (
+      <button className="icon-btn nodrag" title="Open the steps behind this table, as code"
+              onClick={(e) => (stop && e.stopPropagation(), openNotebook(v.id))}>
+        <Icon name="code" />
+      </button>
     );
 
+  if (data.compact) {
+    const names = columns(head?.schema).map((c) => c.name);
+    return (
+      <div className={`rnode table compact k-${kind}`} title="Click to expand">
+        <Handles />
+        <Eyebrow colors={qcolors} kind={kind} meta={rowsText}>{codeBtn(true)}</Eyebrow>
+        <div className="tn-title one" title={v.name}>{prettyName(v.name)}</div>
+        {names.length > 0 && <div className="tn-cols" title={names.join(", ")}>{names.join(" · ")}</div>}
+      </div>
+    );
+  }
+
+  const scopeIsOpen = scopeOpen ?? (scopeChanged || isNew);
+  const traceable = real && shown.some((r) => r._rid);
   return (
-    <div className={`rnode table ${v.kind} ${isNew ? "proposed" : ""} ${v.answer ? "answer" : ""} ${focus === v.id ? "focused" : ""}`}>
+    <div className={`rnode table k-${kind} ${focus === v.id ? "focused" : ""}`}>
       <Handles />
-      <div className="tn-head">
-        {qcolors.map((c) => <span key={c} className="qdot" style={{ background: c }} />)}
-        <span className={`tn-kind ${v.kind}`}>{v.answer ? "answer" : v.kind === "source" ? "source" : isNew ? "proposed table" : "table"}</span>
-        <b className="tn-name">{v.name}</b>
-        <span className="muted small">
-          {real ? `${(v.instance?.row_count ?? 0).toLocaleString()} rows` : head || pend ? "preview" : ""}
-        </span>
-        {head && (
-          <button className="nb-open nodrag" title="The steps behind this table, as code" onClick={() => openNotebook(v.id)}>
-            ⟨/⟩
-          </button>
+      <div className="tn-top">
+        <Eyebrow colors={qcolors} kind={kind} meta={rowsText} review={reviewCount > 0 && !isNew}>{codeBtn(false)}</Eyebrow>
+        <div className="tn-title" title={v.name}>{prettyName(v.name)}</div>
+        {grain && (
+          <div className="tn-grain" title={grain}>
+            {grainChanged ? (
+              <>
+                <s>{sentence(head!.grain)}</s> → <span className="added">{pend!.grain}</span>
+              </>
+            ) : (
+              sentence(grain)
+            )}
+          </div>
         )}
       </div>
-      {(head || pend) && (
-        <div className="tn-meta">
-          <span className="label">grain</span>
-          {grainChanged ? (
-            <>
-              <s>{head!.grain}</s> → <span className="added">{pend!.grain}</span>
-            </>
-          ) : (
-            (pend || head)!.grain
-          )}
-          {scope.length > 0 && (
-            <div className="chips">
-              {scope.map(({ x, st }) => (
-                <span key={x} className={`chip ${st}`}>{st === "added" ? "+ " : ""}{x}</span>
-              ))}
-            </div>
-          )}
+      {cols.length > 0 && real && !shown.length && (
+        <div className="tn-empty">
+          <div>No rows stored to preview</div>
+          <div className="tn-cols" title={cols.map((c) => c.name).join(", ")}>{cols.map((c) => c.name).join(" · ")}</div>
         </div>
       )}
-      {cols.length > 0 && (
-        <div className={`tn-rows nodrag nowheel ${real ? "" : "ghost-rows"}`}>
-          <table>
-            <thead>
-              <tr>
-                {cols.map((c) => (
-                  <th key={c.name} className={c.st} title={c.description}>
-                    {c.st === "added" ? "+ " : ""}
-                    {c.name}
-                    {c.unit && <span className="unit"> {c.unit}</span>}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map((r, i) => (
-                <tr key={r._rid ?? i} className={`${r._rid ? "clickable" : ""} ${!real && head && pend && i >= headPreviewN ? "added-row" : ""}`}
-                    onClick={() => r._rid && onTrace(r._rid)}>
-                  {cols.map((c) => (
-                    <td key={c.name} className={c.st}>{c.st === "added" && real ? "…" : fmt(r[c.name], c)}</td>
-                  ))}
-                </tr>
-              ))}
-              {future && (
+      {cols.length > 0 && (shown.length > 0 || !real) && (
+        <>
+          <DataGrid
+            className="tn-grid"
+            cols={cols as GridCol[]}
+            rows={shown}
+            ghost={!real}
+            onRow={real ? (r) => onTrace(r._rid) : undefined}
+            rowTitle="Trace this row back to its source"
+            rowClass={(_, i) => (!real && head && pend && i >= headPreviewN ? "added-row" : "")}
+            cell={(_, c) => (c.st === "added" && real ? "…" : undefined)}
+            tail={
+              future && (
                 <tr className="future-tr">
                   {cols.map((c) => (
-                    <td key={c.name}>{c.name === future.col ? future.next : columns(head?.schema).find((x) => x.name === c.name)?.role === "measure" ? "?" : ""}</td>
+                    <td key={c.name} className={c.role === "measure" ? "num" : ""}>
+                      {c.name === future.col ? future.next : c.role === "measure" ? "?" : ""}
+                    </td>
                   ))}
                 </tr>
+              )
+            }
+          />
+          {(!real || traceable || shown.length < total) && (
+            <div className="tn-gridnote">
+              {!real ? (
+                "Example rows. Real values appear once it's computed."
+              ) : (
+                <>
+                  {shown.length < total && <span>First {shown.length} of {total.toLocaleString()}</span>}
+                  {traceable && <span>Click a row to trace it</span>}
+                </>
               )}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          )}
+        </>
       )}
-      {!real && (head || pend) && <div className="muted small">illustrative rows until it's computed</div>}
-      {real && <div className="muted small">click a row to see where it came from</div>}
 
       {future && (
-        <div className="tn-future nodrag">
-          <div className="small">
-            The data stops at {future.last}. The {future.next} row will be filled by exactly the same calculation once the data is
-            published.
+        <div className="tn-callout nodrag">
+          <div className="tn-callout-text">
+            <Icon name="clock" />
+            <span>
+              Data ends at <b>{future.last}</b>. The <b>{future.next}</b> row fills in with the same calculation once it's published.
+            </span>
           </div>
-          <div className="tn-actions">
-            <button onClick={() => send(`Estimate ${future.col} ${future.next} from historicals for ${v.name}.`, "chat", [v.id])}>
-              Estimate from historicals
+          <div className="tn-btns">
+            <button className="btn" onClick={() => send(`Estimate ${future.col} ${future.next} from historicals for ${v.name}.`, "chat", [v.id])}>
+              Estimate from history
             </button>
             {canMarket && (
-              <button className="approve" onClick={() => setMarket(true)} title="A YES/NO market on this row, settled by this exact calculation">
-                Ask the market
+              <button className="btn primary" onClick={() => setMarket(true)} title="A YES/NO market on this row, settled by this exact calculation">
+                <Icon name="market" /> Ask the market
               </button>
             )}
           </div>
         </div>
       )}
-      {canMarket && !future && (
-        <div className="tn-market nodrag">
-          <button onClick={() => setMarket(true)}>Make it a market</button>
-          <span className="muted small">a YES/NO bet on a number here, settled by this calculation</span>
+
+      {scope.length > 0 && (
+        <div className="tn-scope">
+          <button className={`tn-disclose nodrag ${scopeIsOpen ? "open" : ""}`} onClick={(e) => (e.stopPropagation(), setScopeOpen(!scopeIsOpen))}>
+            <Icon name="chevron" size={12} />
+            Scope and assumptions
+            <span className="tn-count">{scope.length}</span>
+            {scopeChanged && <span className="tn-pill warn">changed</span>}
+          </button>
+          {scopeIsOpen && (
+            <ul>
+              {scope.map(({ x, st }: { x: string; st: string }) => (
+                <li key={x} className={st}>{sentence(x)}</li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
+
+      {pend && (
+        <Review
+          tone="shape"
+          title={isNew ? "Proposed table" : "Proposed change"}
+          note={
+            <>
+              {added > 0 && <span className="added">+{added} column{added > 1 ? "s" : ""}</span>}
+              {removed > 0 && <span className="removed">−{removed} column{removed > 1 ? "s" : ""}</span>}
+              {v.pending_schemas.length > 1 && <span>+{v.pending_schemas.length - 1} other version</span>}
+            </>
+          }
+          why={pend.rationale}
+          busy={busy}
+          waiting={bundled ? "Comes with the proposed calculation below. Accept it there." : undefined}
+          onAccept={() => act(pend.id, "approve", isNew ? `Approved the shape of ${v.name}.` : `Approved the change to ${v.name}.`)}
+          onDiscard={() => act(pend.id, "discard", `Discarded the proposed ${isNew ? "shape" : "change"} of ${v.name}.`)}
+        />
+      )}
+      {v.pending_transforms.map((tr) => (
+        <Review
+          key={tr.id}
+          tone="step"
+          title="How to compute it"
+          note={
+            <>
+              {tr.reads.length > 0 && <span>from {names(tr.reads)}</span>}
+              {STEP_TAG[tr.kind] && <span className={`tn-tag ${tr.kind}`}>{STEP_TAG[tr.kind]}</span>}
+            </>
+          }
+          why={tr.rationale}
+          warnings={tr.warnings}
+          busy={busy}
+          onAccept={() => act(tr.id, "approve", `Approved how ${v.name} is computed.`)}
+          onDiscard={() => act(tr.id, "discard", `Discarded the proposed computation of ${v.name}.`)}
+        />
+      ))}
+      {visualsPending.map((x) => (
+        <Review
+          key={x.id}
+          tone="visual"
+          title="Proposed visual"
+          why={x.rationale}
+          busy={busy}
+          onPreview={() => onOpenVisual(x.id, v.id)}
+          onAccept={() => act(x.id, "approve", `Approved the visual of ${v.name}.`)}
+          onDiscard={() => act(x.id, "discard", `Discarded the visual of ${v.name}.`)}
+        />
+      ))}
+
+      {(visualsReady.length > 0 || (canMarket && !future)) && (
+        <div className="tn-bar nodrag">
+          {visualsReady.map((x) => (
+            <button key={x.id} className="btn" onClick={() => onOpenVisual(x.id, v.id)}>
+              <Icon name="chart" /> Open visual
+            </button>
+          ))}
+          {canMarket && !future && (
+            <button className="btn" onClick={() => setMarket(true)} title="A YES/NO market on a number in this table, settled by this exact calculation">
+              <Icon name="market" /> Make a market
+            </button>
+          )}
+        </div>
+      )}
+
+      {((v.head_transform && v.kind !== "source") || v.instance) && (
+        <div className="tn-foot nodrag">
+          {v.head_transform && v.kind !== "source" ? (
+            <span className="tn-from" title={v.head_transform.rationale}>
+              Built from <b>{names(v.head_transform.reads)}</b>
+              {STEP_TAG[v.head_transform.kind] && <span className={`tn-tag ${v.head_transform.kind}`}>{STEP_TAG[v.head_transform.kind]}</span>}
+            </span>
+          ) : (
+            <span className="tn-from">{v.kind === "source" ? "Loaded from a source file" : ""}</span>
+          )}
+          <span className="grow" />
+          {v.instance && <VerifyReport compact instanceId={v.instance.id} hash={v.instance.hash} />}
+        </div>
+      )}
+
       {market &&
         createPortal(
           <MarketDraft
@@ -313,77 +475,6 @@ export function TableNode({ data }: NodeProps) {
           />,
           document.body,
         )}
-
-      {pend && (
-        <div className="tn-proposal nodrag">
-          <div className="small">
-            <b>{isNew ? "Proposed table" : `Proposed change${added ? ` · +${added} column${added > 1 ? "s" : ""}` : ""}${removed ? ` · −${removed}` : ""}`}</b>
-            {pend.rationale && <span className="clamp" title={pend.rationale}> — {pend.rationale}</span>}
-            {v.pending_schemas.length > 1 && <span className="muted"> (+{v.pending_schemas.length - 1} other version)</span>}
-          </div>
-          {bundled ? (
-            <div className="muted small">comes with the proposed step above; accept it there</div>
-          ) : (
-            <div className="tn-actions">
-              <button className="approve" disabled={busy}
-                      onClick={() => act(pend.id, "approve", isNew ? `Approved the shape of ${v.name}.` : `Approved the change to ${v.name}.`)}>
-                Accept
-              </button>
-              <button disabled={busy} onClick={() => act(pend.id, "discard", `Discarded the proposed ${isNew ? "shape" : "change"} of ${v.name}.`)}>
-                Discard
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {v.pending_transforms.map((tr) => (
-        <div key={tr.id} className="tn-proposal step nodrag">
-          <div className="small">
-            <b>Proposed: how to compute it</b> <span className={`kind ${tr.kind}`}>{tr.kind}</span>
-            {tr.reads.length > 0 && <> from {names(tr.reads)}</>}
-            {tr.rationale && <span className="clamp" title={tr.rationale}> — {tr.rationale}</span>}
-          </div>
-          {!!tr.warnings?.length && <div className="warnings small">{tr.warnings.join("; ")}</div>}
-          <div className="tn-actions">
-            <button className="approve" disabled={busy} onClick={() => act(tr.id, "approve", `Approved how ${v.name} is computed.`)}>
-              Accept
-            </button>
-            <button disabled={busy} onClick={() => act(tr.id, "discard", `Discarded the proposed computation of ${v.name}.`)}>
-              Discard
-            </button>
-          </div>
-        </div>
-      ))}
-      {v.head_transform && v.kind !== "source" && (
-        <div className="muted small tn-how" title={v.head_transform.rationale}>
-          computed with <span className={`kind ${v.head_transform.kind}`}>{v.head_transform.kind}</span> from {names(v.head_transform.reads)}
-        </div>
-      )}
-
-      {v.visuals.length > 0 && (
-        <div className="tn-visuals nodrag">
-          {v.visuals.map((x) => (
-            <span key={x.id} className="tn-visual">
-              <button onClick={() => onOpenVisual(x.id, v.id)}>◧ {x.status === "pending" ? "proposed visual" : "visual"}</button>
-              {x.status === "pending" && (
-                <>
-                  <button className="approve" disabled={busy} onClick={() => act(x.id, "approve", `Approved the visual of ${v.name}.`)}>Accept</button>
-                  <button disabled={busy} onClick={() => act(x.id, "discard", `Discarded the visual of ${v.name}.`)}>Discard</button>
-                </>
-              )}
-            </span>
-          ))}
-        </div>
-      )}
-      {v.instance && v.answer && (
-        <div className="nodrag">
-          <VerifyReport instanceId={v.instance.id} hash={v.instance.hash} label="fingerprint" />
-        </div>
-      )}
-      {v.instance && !v.answer && v.instance.hash && (
-        <div className="muted small">fingerprint <code className="hash">{v.instance.hash.slice(0, 12)}…</code></div>
-      )}
     </div>
   );
 }
@@ -396,9 +487,9 @@ export function DatasetsNode({ data }: NodeProps) {
   return (
     <div className={`rnode datasets-node ${focus === "datasets" ? "focused" : ""}`}>
       <Handle type="target" position={Position.Top} />
-      <div className="tn-head">
-        <span className="tn-kind need">? data needed</span>
-        <span className="muted small">pick a dataset to load</span>
+      <div className="tn-eyebrow">
+        <span className="tn-kind k-need">Data needed</span>
+        <span className="tn-meta">pick a dataset to load</span>
       </div>
       <div className="ds-list nodrag nowheel">
         {ids.map((id) => {
@@ -407,16 +498,16 @@ export function DatasetsNode({ data }: NodeProps) {
           return (
             <div key={id} className={`dataset ${d.available ? "" : "unavailable"}`}>
               <div className="ds-title">{d.title}</div>
-              <div className="muted small">{d.publisher} · {d.coverage} · updated {d.updated}</div>
-              <div className="ds-desc small">{d.description}</div>
-              {d.loaded_as.length > 0 && <div className="muted small">already loaded: {d.loaded_as.map((x) => x.name).join(", ")}</div>}
-              <div className="tn-actions">
+              <div className="ds-meta">{d.publisher} · {d.coverage} · updated {d.updated}</div>
+              <div className="ds-desc">{d.description}</div>
+              {d.loaded_as.length > 0 && <div className="ds-meta">Already loaded as {d.loaded_as.map((x) => x.name).join(", ")}</div>}
+              <div className="tn-btns">
                 {d.available ? (
-                  <button className="approve" onClick={() => send(`Use dataset ${id} (${d.title}).`, "action")}>Use this</button>
+                  <button className="btn primary" onClick={() => send(`Use dataset ${id} (${d.title}).`, "action")}>Use this</button>
                 ) : (
-                  <span className="muted small">not downloaded yet</span>
+                  <span className="ds-meta">Not downloaded yet</span>
                 )}
-                <a href={d.url} target="_blank" rel="noreferrer" className="small">about ↗</a>
+                <a href={d.url} target="_blank" rel="noreferrer" className="ds-link">About ↗</a>
               </div>
             </div>
           );

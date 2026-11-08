@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Dataset, op } from "../api";
+import Icon from "../Icon";
 import { useThread } from "./ctx";
 import { QCOLORS, questionChains } from "./ResearchCanvas";
+import { prettyName, rowsLabel } from "./table";
 
 /** The workspace outline: its questions and its tables (sources + computed), in two tabs, plus "+ Question" and
  * "+ Data". Clicking a question highlights its chain on the canvas; clicking a table focuses it. */
@@ -46,8 +48,8 @@ export default function Outline() {
               <span className="qdot" style={{ background: QCOLORS[i % QCOLORS.length] }} />
               <span className="ol-text">
                 {q.text}
-                <span className="muted small">
-                  {q.status === "answered" ? " · answered" : " · open"} · {chains.get(q.id)?.size ?? 0} tables
+                <span className="ol-sub">
+                  {q.status === "answered" ? "Answered" : "Open"} · {chains.get(q.id)?.size ?? 0} tables
                 </span>
               </span>
             </a>
@@ -96,12 +98,15 @@ export default function Outline() {
     return (
       <a className={`ol-t ${focus === id ? "active" : ""}`} onClick={() => setFocus(id)}>
         {cols.map((cl) => <span key={cl!} className="qdot" style={{ background: cl! }} />)}
-        <span className="ol-text">
-          {v.name}
-          <span className="muted small"> · {v.instance ? `${(v.instance.row_count ?? 0).toLocaleString()} rows` : "not computed"}</span>
+        <span className="ol-text" title={v.name}>
+          {prettyName(v.name)}
+          <span className="ol-sub">{v.instance ? rowsLabel(v.instance.row_count ?? 0) : "not computed yet"}</span>
         </span>
         {v.head_schema && (
-          <button className="nb-open" title="notebook" onClick={(e) => (e.stopPropagation(), openNotebook(id))}>⟨/⟩</button>
+          <button className="ol-icon" title="Open the steps behind this table, as code"
+                  onClick={(e) => (e.stopPropagation(), openNotebook(id))}>
+            <Icon name="code" />
+          </button>
         )}
       </a>
     );

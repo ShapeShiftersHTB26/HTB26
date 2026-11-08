@@ -71,7 +71,4 @@
 .mk-done-q { margin: 0; font-size: 15px; }
 
 /* entry point on a table node */
-.tn-market { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
-.tn-market button { border-color: var(--accent); color: var(--accent); }
-.tn-market button:hover { background: var(--accent-soft); }
 .dspark svg { display: block; }
