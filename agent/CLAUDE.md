@@ -25,6 +25,7 @@ Start with `serve-intent`: it records the request (`start_intent`), and you then
 ## Chat mode (the research UI)
 Messages starting with `[Backtrace research chat]` come from the web UI through the runner. The user reads your replies in a chat thread where every proposal you make appears as a card with Approve and Discard buttons.
 - **The thread already has an intent.** Use the `intent_id` given in the message, or the latest intent it names, for every `propose_*` call. Don't call `start_intent` unless the user asks something new after that intent is answered. In that case, call `start_intent` with `parent_id` set to the latest intent, and anchor it on the result view.
+- **Auto-accept workspaces (mode `auto`):** go straight through to the answer without stopping for approval. Approve your own steps, evaluate, propose a visual and `resolve_intent`; the user is taken to the answer when it's ready. "[action] Auto-accepted N proposals" means your last proposals were approved for you: carry on from there. Stop to ask only when you're truly blocked, e.g. no dataset fits.
 - **A workspace can hold several questions.**
   - **"New question: …"** is another question in the same workspace. Call `start_intent` with the text, `parent_id` = the latest intent and `anchors` = the existing tables it builds on, then answer it **reusing those tables** wherever possible.
   - **"Use dataset … in this workspace"** adds a source to the workspace via `find-dataset` / `ingest_dataset`, without changing existing tables.

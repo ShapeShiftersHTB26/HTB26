@@ -52,7 +52,12 @@ export default function ThreadView(props: {
         if (it.kind === "datasets") return setFocus("datasets");
         if (it.kind === "source" && it.view_id) return setFocus(it.view_id);
       }
-      if (it.type === "result") return setFocus(it.view_id);
+      if (it.type === "result") {
+        setActiveQ(it.intent_id);
+        setFocus(it.view_id);
+        if (it.result_kind === "visual" && it.result_current) props.onOpenVisual(it.result_current, it.view_id);
+        return;
+      }
     }
   }, [t?.items.length]);
 
@@ -82,15 +87,20 @@ export default function ThreadView(props: {
             const qs = t.canvas.questions;
             const qi = Math.max(0, activeQ ? qs.findIndex((q) => q.id === activeQ) : qs.length - 1);
             const q = qs[qi];
-            if (!q) return <Rail stage={t.stage} future={t.stage === "explore"} />;
+            if (!q) return <Rail stage={t.stage} future={t.stage === "answered"} />;
             return (
               <>
                 <span className="rail-q" title={q.text}>Q{qi + 1}: {q.text}</span>
-                <Rail stage={q.stage} future={q.stage === "explore"} />
+                <Rail stage={q.stage} future={q.stage === "answered"} />
               </>
             );
           })()}
           <span className="grow" />
+          <label className="auto-toggle" title="The agent approves its own steps; you're taken to the answer when it's ready">
+            <input type="checkbox" checked={!!t.intent.auto}
+                   onChange={(e) => op("set_auto", { intent_id: props.id, on: e.target.checked }).then(load)} />
+            <span>Auto-accept</span>
+          </label>
           {noting ? (
             <form className="note-form" onSubmit={(e) => (e.preventDefault(), addNote())}>
               <input autoFocus value={noteText} onChange={(e) => setNoteText(e.target.value)}

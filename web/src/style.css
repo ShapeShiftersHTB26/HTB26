@@ -438,3 +438,7 @@ textarea.nb-code.edit { width: 100%; resize: vertical; border: 2px solid var(--a
 .minirail .done { color: var(--ink); }
 .minirail .current i { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .minirail .current { color: var(--accent); font-weight: 600; }
+
+.auto-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; user-select: none; }
+.auto-toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
+.landing-auto { margin: 12px auto 0; color: var(--muted); }

@@ -159,6 +159,8 @@ def start_intent(text: str, anchors: list[str] | None = None, mode: str | None =
     for a in anchors:
         P.view_node(a)
     _check_intent(parent_id)
+    if not mode and parent_id:  # a follow-up question keeps its workspace's mode (auto-accept on or off)
+        mode = (g.run("MATCH (p:Intent {id:$p}) RETURN p.mode AS m", p=parent_id) or [{}])[0].get("m")
     mode = mode or ("auto" if anchors else "guided")
     if mode not in ("auto", "guided"):
         raise ValueError("mode must be auto | guided")

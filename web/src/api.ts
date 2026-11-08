@@ -192,6 +192,7 @@ export type Thread = {
     title?: string;
     status: string;
     mode: string;
+    auto?: boolean;
     agent_status: "idle" | "queued" | "working" | "error";
     agent_error?: string;
     agent_activity?: string;
@@ -203,7 +204,7 @@ export type Thread = {
   datasets: Record<string, Dataset>;
   names: Record<string, string>;
   view_kinds: Record<string, string>;
-  stage: "ask" | "shape" | "data" | "explore";
+  stage: "ask" | "shape" | "data" | "answer" | "answered";
   canvas: {
     nodes: import("./research/nodes").CanvasView[];
     edges: { from: string; to: string; pending: boolean; kind?: string }[];

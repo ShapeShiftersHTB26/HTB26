@@ -1,18 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { Dataset, op } from "../api";
 
-export type Stage = "ask" | "shape" | "data" | "explore";
+export type Stage = "ask" | "shape" | "data" | "answer" | "answered";
 const STEPS: { key: Stage | "future"; label: string; hint: string }[] = [
   { key: "ask", label: "Ask", hint: "start with a question" },
   { key: "shape", label: "Shape", hint: "agree what the answer looks like" },
   { key: "data", label: "Data", hint: "find and load public data" },
-  { key: "explore", label: "Explore", hint: "see it, trace it, go deeper" },
+  { key: "answer", label: "Answer", hint: "the result, traced to its sources" },
 ];
-const ORDER: Stage[] = ["ask", "shape", "data", "explore"];
+const ORDER: Stage[] = ["ask", "shape", "data", "answer"];
 
 /** The journey strip: dim on the landing, a progress rail in a thread. "Future" joins once there's an answer. */
 export function Rail(props: { stage: Stage | null; future?: boolean; hints?: boolean }) {
-  const at = props.stage ? ORDER.indexOf(props.stage) : -1;
+  // "answered" ticks every step off, Answer included
+  const at = props.stage === "answered" ? ORDER.length : props.stage ? ORDER.indexOf(props.stage) : -1;
   const steps = props.future ? [...STEPS, { key: "future" as const, label: "Future", hint: "what happens next?" }] : STEPS;
   return (
     <ol className={`rail ${props.hints ? "with-hints" : ""}`}>
@@ -35,6 +36,21 @@ export default function Landing(props: { onStart: (intentId: string) => void }) 
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [auto, setAuto] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("backtrace.auto") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleAuto = (on: boolean) => {
+    setAuto(on);
+    try {
+      localStorage.setItem("backtrace.auto", on ? "1" : "0");
+    } catch {
+      /* storage unavailable */
+    }
+  };
   const [datasets, setDatasets] = useState<(Dataset & { examples?: string[] })[]>([]);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -51,7 +67,7 @@ export default function Landing(props: { onStart: (intentId: string) => void }) 
     setBusy(true);
     setErr(null);
     try {
-      const r = await op<{ intent_id: string }>("ask", { text: text.trim() });
+      const r = await op<{ intent_id: string }>("ask", { text: text.trim(), mode: auto ? "auto" : "guided" });
       props.onStart(r.intent_id);
     } catch (e: any) {
       setErr(e.message);
@@ -76,6 +92,10 @@ export default function Landing(props: { onStart: (intentId: string) => void }) 
                placeholder="e.g. Will the flat market in Reading grow next year?" />
         <button className="approve" disabled={busy || !text.trim()}>{busy ? "Starting…" : "Start"}</button>
       </form>
+      <label className="auto-toggle landing-auto">
+        <input type="checkbox" checked={auto} onChange={(e) => toggleAuto(e.target.checked)} />
+        <span>Auto-accept: let the agent approve its own steps and take me straight to the answer</span>
+      </label>
       {err && <div className="error small">{err}</div>}
       {datasets.length > 0 && (
         <>

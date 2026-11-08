@@ -50,7 +50,7 @@ export type Question = {
   id: string;
   text: string;
   status: string;
-  stage: "ask" | "shape" | "data" | "explore";
+  stage: "ask" | "shape" | "data" | "answer" | "answered";
   summary?: string;
   parent_id?: string;
   result_view_id?: string;
@@ -73,10 +73,10 @@ export function QuestionNode({ data }: NodeProps) {
   );
 }
 
-const STAGES = ["ask", "shape", "data", "explore"] as const;
-/** One question's progress through ask -> shape -> data -> explore, as small labelled dots. */
+const STAGES = ["ask", "shape", "data", "answer"] as const;
+/** One question's progress through ask -> shape -> data -> answer, as small labelled dots (all ticked once answered). */
 export function MiniRail({ stage }: { stage: Question["stage"] }) {
-  const at = STAGES.indexOf(stage);
+  const at = stage === "answered" ? STAGES.length : STAGES.indexOf(stage);
   return (
     <div className="minirail">
       {STAGES.map((s, i) => (
