@@ -191,10 +191,12 @@ git clone git@github.com:ShapeShiftersHTB26/HTB26.git ~/HTB26
 
 ```bash
 SERVER=deploy@203.0.113.10
-rsync -av prediction-market/keys/ $SERVER:HTB26/prediction-market/keys/   # admin + mUSDC mint keypairs
-rsync -av --progress data/raw/ $SERVER:HTB26/data/raw/                    # catalog CSVs (~250 MB); only needed to load datasets on the server
-scp .env $SERVER:HTB26/.env                                               # starting point: keeps ANTHROPIC_API_KEY and PG_DSN
+rsync -av prediction-market/keys $SERVER:HTB26/prediction-market/   # admin + mUSDC mint + bot keypairs -> prediction-market/keys/
+rsync -av --progress data/raw $SERVER:HTB26/data/                   # catalog CSVs (~250 MB) -> data/raw/; only needed to load datasets on the server
+scp .env $SERVER:HTB26/.env                                         # starting point: keeps ANTHROPIC_API_KEY and PG_DSN
 ```
+
+Type the folder names with **no trailing slash**, and give the parent folder as the destination. To rsync, `keys` means "the folder" and `keys/` means "its contents". zsh drops the slash when you tab-complete a folder, so the `keys/ → keys/` form quietly turns into `keys/keys/` on the server. Check with `ssh $SERVER ls HTB26/prediction-market/keys`; you should see `admin.json  bots  musdc-mint.json`.
 
 Rows you already loaded into Postgres stay there, and the server reads them through the same `PG_DSN`. If you want your existing research on the server too, see "Optional: bring your local research over" below; it also explains why dev and prod shouldn't keep sharing that database afterwards.
 
@@ -217,6 +219,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 PG_DSN=postgresql://USER:PASSWORD@HOST:5432/backtrace?sslmode=require
 BACKTRACE_STORE=postgres
 PM_ADMIN_KEY=<the same value as ADMIN_API_KEY in prediction-market/.env.prod>
+ACCESS_CODE=<the code visitors type to open the site; required, e.g. openssl rand -hex 4>
 ```
 
 **`prediction-market/.env.prod`**
@@ -308,7 +311,7 @@ Your laptop's threads, views and fingerprints live in its Memgraph graph. The ro
 
 ```bash
 python3 scripts/export_state.py                                   # writes data/state/<stamp>/ (~300 KB): graph dump, agentic cache, manifest
-rsync -av data/state/ deploy@203.0.113.10:HTB26/data/state/
+rsync -av data/state deploy@203.0.113.10:HTB26/data/            # -> data/state/ on the server (no trailing slash, see step 5)
 ```
 
 **On the server** (from `~/HTB26`, with the stack running):

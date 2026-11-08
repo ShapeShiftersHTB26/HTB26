@@ -39,7 +39,8 @@ export default function App() {
       <a href="#/" className={tab === "research" ? "active" : ""}>Research</a>
       <a href="#/graph" className={tab === "graph" ? "active" : ""}>Graph</a>
       <a href="#/predictions" className={tab === "predictions" ? "active" : ""}>Predictions</a>
-      <a href="#/adhd" className={`adhd-tab${tab === "adhd" ? " active" : ""}`}>ADHD</a>
+      {/* ADHD tab hidden from the nav; the page still opens at #/adhd (the link shows only while you're on it) */}
+      {tab === "adhd" && <a href="#/adhd" className="adhd-tab active">ADHD</a>}
     </nav>
   );
 
