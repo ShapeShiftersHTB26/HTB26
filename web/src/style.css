@@ -428,3 +428,13 @@ textarea.nb-code.edit { width: 100%; resize: vertical; border: 2px solid var(--a
 .chip.col { background: var(--bg); color: var(--ink); border: 1px solid var(--line); }
 .react-flow__node.faded { opacity: .25; transition: opacity .2s; }
 .react-flow__edge.faded { opacity: .15; }
+
+.ws-title { font-size: 16px; white-space: nowrap; max-width: 280px; overflow: hidden; text-overflow: ellipsis; margin-right: 6px; }
+.rail-q { font-size: 13px; color: var(--muted); max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.minirail { display: flex; gap: 10px; margin-top: 6px; font-size: 11px; color: var(--muted); }
+.minirail span { display: inline-flex; align-items: center; gap: 4px; }
+.minirail i { width: 8px; height: 8px; border-radius: 50%; background: var(--line); display: inline-block; }
+.minirail .done i { background: var(--ok); }
+.minirail .done { color: var(--ink); }
+.minirail .current i { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.minirail .current { color: var(--accent); font-weight: 600; }

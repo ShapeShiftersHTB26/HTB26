@@ -50,6 +50,7 @@ export type Question = {
   id: string;
   text: string;
   status: string;
+  stage: "ask" | "shape" | "data" | "explore";
   summary?: string;
   parent_id?: string;
   result_view_id?: string;
@@ -65,8 +66,25 @@ export function QuestionNode({ data }: NodeProps) {
         <span className="qdot" style={{ background: color }} /> question {data.n as number} · {q.status === "answered" ? "answered ✓" : "open"}
       </div>
       <div className="q">“{q.text}”</div>
+      <MiniRail stage={q.stage} />
       {q.summary && <div className="qsum" title={q.summary}>{q.summary}</div>}
       <Handle type="source" position={Position.Bottom} />
+    </div>
+  );
+}
+
+const STAGES = ["ask", "shape", "data", "explore"] as const;
+/** One question's progress through ask -> shape -> data -> explore, as small labelled dots. */
+export function MiniRail({ stage }: { stage: Question["stage"] }) {
+  const at = STAGES.indexOf(stage);
+  return (
+    <div className="minirail">
+      {STAGES.map((s, i) => (
+        <span key={s} className={i < at ? "done" : i === at ? "current" : "todo"}>
+          <i />
+          {s}
+        </span>
+      ))}
     </div>
   );
 }

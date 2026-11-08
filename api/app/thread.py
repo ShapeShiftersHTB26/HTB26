@@ -6,6 +6,8 @@ The runner (scripts/runner.py) picks up queued threads, runs the app agent headl
 Also: the curated dataset catalog (datasets.json) the agent offers when a question needs data."""
 import json
 import os
+import re
+import threading
 
 from . import executor as X
 from . import graph as g
@@ -14,6 +16,7 @@ from . import proposals as P
 from .registry import operation
 
 CATALOG_PATH = os.path.join(os.path.dirname(__file__), "datasets.json")
+TITLE_MODEL = os.environ.get("BACKTRACE_AGENT_MODEL") or "claude-haiku-5-5"
 RAW = "/data/raw"
 MSG_JSON = ("datasets", "suggestions", "focus")
 
@@ -122,6 +125,7 @@ def ask(text: str, intent_id: str | None = None, kind: str = "chat", anchors: li
         root = _root_of(intent_id)
     else:
         root = O.start_intent(text=text, anchors=anchors, author="user")["id"]
+        name_later(root, text)
     _post(root, "user", text, kind, focus=focus or None)
     g.run("MATCH (q:Intent {id:$q}) SET q.agent_status = 'queued', q.queued_at = $t, q.agent_error = null",
           q=root, t=g.now())
@@ -237,7 +241,8 @@ def get_thread(intent_id: str) -> dict:
     rq = intents[root]
     thread_intents = [summaries.get(i, intents[i]) for i in ids]
     canvas = _canvas(ids, items, thread_intents, {v["id"]: v for v in views})
-    return {"intent": {"id": root, "text": rq["text"], "status": rq["status"], "mode": rq.get("mode"),
+    return {"intent": {"id": root, "text": rq["text"], "title": rq.get("title"), "status": rq["status"],
+                       "mode": rq.get("mode"),
                        "agent_status": rq.get("agent_status") or "idle", "agent_error": rq.get("agent_error"),
                        "agent_activity": rq.get("agent_activity"),
                        "created_at": rq["created_at"]},
@@ -329,6 +334,7 @@ def _canvas(ids: list[str], items: list[dict], thread_intents: list[dict], views
         if q.get("result_view_id") and q["result_view_id"] not in vids:
             vids.append(q["result_view_id"])
         questions.append({"id": q["id"], "text": q["text"], "status": q["status"], "summary": q.get("summary"),
+                          "stage": _q_stage(q, items, thread_intents),
                           "parent_id": q.get("parent_id"), "result_view_id": q.get("result_view_id"),
                           "views": [v for v in vids if v in on_canvas]})
     return {"nodes": nodes, "edges": edges, "notes": notes, "open_datasets": open_datasets, "focus": focus,
@@ -450,3 +456,63 @@ def note(intent_id: str, text: str, about: str | None = None, author: str = "age
                                "author": author, "created_at": g.now()}.items() if v is not None}
     g.run("MATCH (q:Intent {id:$q}) CREATE (n:Note)-[:IN_THREAD]->(q) SET n = $props", q=root, props=props)
     return {"id": props["id"], "thread": root}
+
+
+def _q_stage(q: dict, items: list[dict], thread_intents: list[dict]) -> str:
+    """Where one question is in ask -> shape -> data -> explore: from its own proposals, the dataset/source cards
+    posted while it was the latest question, and whether it's answered."""
+    if q.get("status") == "answered":
+        return "explore"
+    later = sorted(x["created_at"] for x in thread_intents if x["created_at"] > q["created_at"])
+    until = later[0] if later else "~"
+    own = {i["kind"] for i in items if i["type"] == "proposal" and i["proposal"].get("intent_id") == q["id"]
+           and i["proposal"]["status"] != "discarded"}
+    cards = {i.get("kind") for i in items if i["type"] == "message" and q["created_at"] <= i["at"] < until}
+    if "transform" in own or cards & {"datasets", "source"}:
+        return "data"
+    return "shape" if "schema" in own else "ask"
+
+
+# ---------------------------------------------------------------- workspace names
+
+def _fallback_title(text: str) -> str:
+    words = re.sub(r"[?.!]+$", "", text.strip()).split()
+    return " ".join(words[:6])[:60] or "Untitled research"
+
+
+def make_title(text: str) -> str:
+    """A short workspace title from the first question (one quick structured-output call; falls back to the
+    question's first words)."""
+    try:
+        from .transforms.agentic import client
+        r = client().beta.messages.create(
+            model=TITLE_MODEL, max_tokens=200, thinking={"type": "disabled"},
+            output_config={"effort": "low", "format": {"type": "json_schema", "schema": {
+                "type": "object", "additionalProperties": False, "required": ["title"],
+                "properties": {"title": {"type": "string"}}}}},
+            system=("Name a data-research workspace from the user's first question: 2-6 words, Title Case, naming "
+                    "the subject (place, thing, measure), no quotes, no trailing punctuation. Examples: "
+                    "'Reading Flat Prices', 'Coventry Commercial vs Residential', 'US Airline Delays 2025'."),
+            messages=[{"role": "user", "content": text[:2000]}])
+        title = json.loads(next(b.text for b in r.content if b.type == "text"))["title"].strip().strip("'\"")
+        return title[:60] or _fallback_title(text)
+    except Exception:  # noqa: BLE001  (no key, refusal, network: the question's first words will do)
+        return _fallback_title(text)
+
+
+def name_later(root: str, text: str) -> None:
+    def work():
+        g.run("MATCH (q:Intent {id:$q}) WHERE q.title IS NULL SET q.title = $t", q=root, t=make_title(text))
+    threading.Thread(target=work, daemon=True).start()
+
+
+@operation
+def rename_workspace(intent_id: str, title: str) -> dict:
+    """Rename the research workspace (the thread) this intent belongs to, e.g. when the user switches subject
+    (Edinburgh -> Coventry). 2-6 words, Title Case. The thread list and canvas header show it."""
+    root = _root_of(intent_id)
+    title = (title or "").strip()
+    if not title:
+        raise ValueError("empty title")
+    g.run("MATCH (q:Intent {id:$q}) SET q.title = $t", q=root, t=title[:60])
+    return {"id": root, "title": title[:60]}

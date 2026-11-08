@@ -76,6 +76,7 @@ export type Graph = {
 export type Intent = {
   id: string;
   text: string;
+  title?: string;
   mode: "auto" | "guided";
   status: "open" | "answered";
   anchors: string[];
@@ -188,6 +189,7 @@ export type Thread = {
   intent: {
     id: string;
     text: string;
+    title?: string;
     status: string;
     mode: string;
     agent_status: "idle" | "queued" | "working" | "error";

@@ -50,7 +50,7 @@ export default function Research(props: { nav: ReactNode; hidden: boolean; threa
             return (
               <a key={q.id} className={q.id === props.threadId ? "active" : ""} onClick={() => go(q.id)} title={q.text}>
                 <span className={`dot ${busy ? "busy" : q.status}`} />
-                {q.text}
+                {q.title || q.text}
               </a>
             );
           })}

@@ -76,7 +76,20 @@ export default function ThreadView(props: {
                           openNotebook: setNotebook, activeQ, setActiveQ }}>
       <div className={`thread-canvas ${notebook ? "with-notebook" : ""}`}>
         <div className="thread-bar">
-          <Rail stage={t.stage} future={t.stage === "explore"} />
+          <b className="ws-title" title={t.intent.text}>{t.intent.title || t.intent.text}</b>
+          {(() => {
+            // the bar follows one question: the selected one, else the latest
+            const qs = t.canvas.questions;
+            const qi = Math.max(0, activeQ ? qs.findIndex((q) => q.id === activeQ) : qs.length - 1);
+            const q = qs[qi];
+            if (!q) return <Rail stage={t.stage} future={t.stage === "explore"} />;
+            return (
+              <>
+                <span className="rail-q" title={q.text}>Q{qi + 1}: {q.text}</span>
+                <Rail stage={q.stage} future={q.stage === "explore"} />
+              </>
+            );
+          })()}
           <span className="grow" />
           {noting ? (
             <form className="note-form" onSubmit={(e) => (e.preventDefault(), addNote())}>
