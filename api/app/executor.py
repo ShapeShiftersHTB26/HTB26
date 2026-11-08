@@ -1,6 +1,7 @@
 """Instances and records: evaluating views; rows + record lineage live in Postgres (pg.py), instance manifests
 and instance-level lineage in Memgraph."""
 import json
+import os
 
 import jsonschema
 import pandas as pd
@@ -251,9 +252,16 @@ def publish_snapshot(view_id: str, shape: dict, recipe: dict, batches: list[str]
 
 # ---------------------------------------------------------------- verify
 
+# Demo shortcut: tables bigger than this aren't re-read (rows streamed back from Postgres, source file re-hashed)
+# during verify; their stored roots are taken as given and those checks are reported as skipped (None), while
+# formulas and the hash chain above them are still recomputed. Set high to always verify in full.
+VERIFY_FULL_MAX = int(os.environ.get("BACKTRACE_VERIFY_FULL_MAX", "100000"))
+
+
 def verify(instance_id: str, recompute: bool = True, _seen: dict | None = None) -> dict:
     """Recompute an instance's hash tree from Postgres + definitions. With recompute, deterministic (ops)
-    instances are re-executed from their stored inputs and must reproduce the same data root."""
+    instances are re-executed from their stored inputs and must reproduce the same data root.
+    Tables over VERIFY_FULL_MAX rows are checked from their stored roots only (marked skipped)."""
     seen = _seen if _seen is not None else {}
     if instance_id in seen:
         return seen[instance_id]
@@ -261,11 +269,17 @@ def verify(instance_id: str, recompute: bool = True, _seen: dict | None = None) 
     r = g.run("MATCH (i:Instance {id:$i})-[:USED_SCHEMA]->(s), (i)-[:USED_TRANSFORM]->(t), (i)-[:OF]->(v) "
               "RETURN s, t, v", i=instance_id)[0]
     shape, transform, view = P.decode(r["s"]), P.decode(r["t"]), r["v"]
-    root, n = H.data_root(ST.stream(instance_id))
+    big = (i.get("row_count") or 0) > VERIFY_FULL_MAX
+    if big:
+        root, n = i.get("data_root"), i.get("row_count")
+    else:
+        root, n = H.data_root(ST.stream(instance_id))
     node = {"instance_id": instance_id, "view_id": view["id"], "view_name": view["name"],
             "kind": transform["kind"], "rows": n, "stored_hash": i.get("hash"), "checks": {}, "inputs": []}
     checks = node["checks"]
-    checks["data_root"] = root == i.get("data_root")
+    checks["data_root"] = None if big else root == i.get("data_root")
+    if big:
+        node["note"] = f"large table ({n:,} rows): stored rows not re-read in this demo; hash chain recomputed"
 
     if transform["kind"] == "source":
         batches = json.loads(i.get("batches") or "[]")
@@ -274,12 +288,13 @@ def verify(instance_id: str, recompute: bool = True, _seen: dict | None = None) 
         bhashes = []
         for b in batches:
             bn = bnodes[b]
-            b_root, _ = H.data_root(ST.stream(b))
-            import os
-            file_ok = (H.file_sha256(bn["path"]) == bn["file_sha256"]) if os.path.isfile(bn["path"]) else None
+            b_big = (bn.get("row_count") or 0) > VERIFY_FULL_MAX
+            b_root = bn["data_root"] if b_big else H.data_root(ST.stream(b))[0]
+            file_ok = None if b_big or not os.path.isfile(bn["path"]) else H.file_sha256(bn["path"]) == bn["file_sha256"]
             bh = H.batch_hash(formula, bn["file_sha256"], b_root)
             node["inputs"].append({"batch_id": b, "path": bn["path"], "rows": bn["row_count"],
-                                   "checks": {"data_root": b_root == bn["data_root"], "hash": bh == bn["hash"],
+                                   "checks": {"data_root": None if b_big else b_root == bn["data_root"],
+                                              "hash": bh == bn["hash"],
                                               "file": file_ok}, "stored_hash": bn["hash"]})
             bhashes.append(bh)
         recomputed = H.instance_hash(formula, root, bhashes, ordered=True)
@@ -290,7 +305,11 @@ def verify(instance_id: str, recompute: bool = True, _seen: dict | None = None) 
         in_nodes = [instance_node(x) for x in ins]
         formula = _formula(transform, shape, [x["formula_hash"] for x in in_nodes])
         recomputed = H.instance_hash(formula, root, [x["hash"] for x in in_nodes])
-        if recompute and transform["kind"] in ("ops", "python"):
+        big_input = any((x.get("row_count") or 0) > VERIFY_FULL_MAX for x in in_nodes)
+        if recompute and transform["kind"] in ("ops", "python") and big_input:
+            checks["recomputed"] = None
+            node["note"] = "reads a large table: not re-run in this demo; hash chain recomputed"
+        elif recompute and transform["kind"] in ("ops", "python"):
             names = {x["v"]["id"]: x["v"]["name"] for x in g.run(
                 "MATCH (:Instance {id:$i})-[:FROM]->(j:Instance)-[:OF]->(v:View) RETURN v", i=instance_id)}
             frames = {names[x["view_id"]]: load_frame(x["id"]) for x in in_nodes}

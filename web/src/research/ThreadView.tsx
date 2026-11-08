@@ -54,7 +54,7 @@ export default function ThreadView(props: {
       }
       if (it.type === "result") {
         setActiveQ(it.intent_id);
-        setFocus(it.view_id);
+        setFocus(`q:${it.intent_id}`); // the question node now carries the full answer: bring it into view
         if (it.result_kind === "visual" && it.result_current) props.onOpenVisual(it.result_current, it.view_id);
         return;
       }

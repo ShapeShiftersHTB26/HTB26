@@ -88,7 +88,8 @@ export default function ResearchCanvas() {
     const results = new Set(c.questions.filter((q) => !activeQ || q.id === activeQ).map((q) => q.result_view_id));
     c.questions.forEach((q, i) =>
       add({ id: `q:${q.id}`, type: "question", className: active && q.id !== activeQ ? "faded" : "",
-            data: { q, n: i + 1, color: qcolor.get(q.id), active: q.id === activeQ }, position: { x: 0, y: 0 } }, [400, 96]));
+            data: { q, n: i + 1, color: qcolor.get(q.id), active: q.id === activeQ }, position: { x: 0, y: 0 } },
+          q.summary ? [480, 96 + Math.ceil(q.summary.length / 60) * 20 + 30] : [400, 96]));
     c.nodes.forEach((v) => {
       const pending = v.pending_schemas.length + v.pending_transforms.length + v.visuals.filter((x) => x.status === "pending").length;
       const compact = focus !== v.id && !pending && !results.has(v.id) && !!v.head_schema;
@@ -149,7 +150,8 @@ export default function ResearchCanvas() {
     const qs = nodes.filter((n) => n.type === "question");
     const srcs = nodes.filter((n) => n.type === "table" && (n.data.view as CanvasView).kind === "source");
     const middle = nodes.filter((n) => !qs.includes(n) && !srcs.includes(n));
-    const top = Math.min(...middle.map((n) => n.position.y), 0) - 96 - 70;
+    const qh = Math.max(96, ...qs.map((n) => wh(n)[1]));
+    const top = Math.min(...middle.map((n) => n.position.y), 0) - qh - 70;
     band(qs, top);
     if (srcs.length) band(srcs, Math.max(...middle.map((n) => n.position.y + wh(n)[1]), top + 96) + 90);
     return { nodes, edges };
@@ -161,6 +163,11 @@ export default function ResearchCanvas() {
     const n = nodes.find((x) => x.id === focus);
     if (!n) return;
     last.current = focus;
+    if (focus.startsWith("q:")) {
+      // a question (with its answer): show the whole node
+      setTimeout(() => flow.fitView({ nodes: [{ id: focus }], padding: 0.35, maxZoom: 1.25, duration: 600 }), 60);
+      return;
+    }
     const w = (n.style?.width as number) || 300;
     flow.setCenter(n.position.x + w / 2, n.position.y + 160, { zoom: Math.max(flow.getZoom(), 0.85), duration: 500 });
   }, [focus, nodes]);
@@ -187,6 +194,7 @@ export default function ResearchCanvas() {
           if (n.id.startsWith("q:")) {
             const id = n.id.slice(2);
             setActiveQ(activeQ === id ? null : id);
+            if (activeQ !== id) setFocus(n.id);
           } else if (!n.id.startsWith("note:")) setFocus(n.id);
         }}
         onPaneClick={() => (setFocus(null), setActiveQ(null))}

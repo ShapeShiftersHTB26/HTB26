@@ -67,7 +67,12 @@ export function QuestionNode({ data }: NodeProps) {
       </div>
       <div className="q">“{q.text}”</div>
       <MiniRail stage={q.stage} />
-      {q.summary && <div className="qsum" title={q.summary}>{q.summary}</div>}
+      {q.summary && (
+        <div className="qanswer">
+          <div className="label">answer</div>
+          {q.summary}
+        </div>
+      )}
       <Handle type="source" position={Position.Bottom} />
     </div>
   );
@@ -217,7 +222,6 @@ export function TableNode({ data }: NodeProps) {
           </button>
         )}
       </div>
-      {v.answer && <div className="answer">{v.answer}</div>}
       {(head || pend) && (
         <div className="tn-meta">
           <span className="label">grain</span>

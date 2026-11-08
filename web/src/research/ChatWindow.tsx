@@ -19,13 +19,14 @@ export default function ChatWindow() {
     end.current?.scrollIntoView({ block: "end" });
   }, [t.items.length, status, open, t.intent.agent_activity]);
 
-  const focusName = focus === "datasets" ? "the data choice" : focus ? t.names[focus] : null;
+  const focusView = focus && t.names[focus] ? focus : null; // only tables travel with a message
+  const focusName = focus === "datasets" ? "the data choice" : focusView ? t.names[focusView] : null;
   const submit = async () => {
     const x = text.trim();
     if (!x) return;
     setBusySend(true);
     try {
-      await send(x, "chat", focus && focus !== "datasets" ? [focus] : undefined);
+      await send(x, "chat", focusView ? [focusView] : undefined);
       setText("");
     } finally {
       setBusySend(false);
