@@ -27,6 +27,12 @@ It uses only the Python standard library (`urllib`) against REST, prints PASS or
 - **S2:** propose a visual and approve it; ingest a small source; propose a transform that reads it and approve it; `get_frontier` returns nothing.
 - **S3:** `evaluate` returns `row_count > 0`; `trace` of the first record ends at the source.
 
+## Production
+Run `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`. Its `.env` needs `ACCESS_CODE`, `PG_DSN`, `ANTHROPIC_API_KEY` and `PM_ADMIN_KEY`.
+- **Access gate:** the web server asks every visitor for `ACCESS_CODE` before anything loads (`web/access-gate.ts`). That covers the app, `/api` and `/pm-api`. The right code sets a cookie that lasts 30 days.
+- **Ports:** only the web port is published. The api has no host port, Memgraph never does (dev included), and Lab doesn't start; use `--profile debug` if you need it.
+- **Memgraph is pinned** to `memgraph/memgraph:3.11.0`, so state exports and snapshots stay compatible.
+
 ## Moving to a server (state export / import)
 Row data lives in Postgres (`PG_DSN`), so a new server only needs the graph and the agentic cache.
 

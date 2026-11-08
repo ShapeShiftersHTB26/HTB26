@@ -1,9 +1,11 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { nodePolyfills } from "vite-plugin-node-polyfills";
+import accessGate from "./access-gate";
 
 export default defineConfig({
   plugins: [
+    accessGate(process.env.ACCESS_CODE), // ACCESS_CODE set = the whole site asks for it first
     react(),
     // The Predictions tab's Solana libraries (web3.js, anchor) expect Node globals in the browser.
     nodePolyfills({ include: ["buffer", "process", "crypto", "stream", "util"], globals: { Buffer: true, process: true } }),

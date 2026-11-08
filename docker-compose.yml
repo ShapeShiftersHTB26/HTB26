@@ -1,7 +1,7 @@
 services:
   memgraph:
-    image: memgraph/memgraph:latest
-    ports: ["7687:7687"]
+    image: memgraph/memgraph:3.11.0   # pinned: state exports (DUMP) and snapshots move between servers
+    # no published port: only the api and lab reach it, inside the docker network
     volumes: [mg_data:/var/lib/memgraph]
     command: ["--log-level=WARNING", "--also-log-to-stderr"]
 
@@ -39,6 +39,7 @@ services:
     environment:
       API_URL: http://api:8000
       PM_API_URL: http://prediction-market-backend:8080   # Predictions tab (/pm-api proxy)
+      ACCESS_CODE: ${ACCESS_CODE:-}   # set = the whole site (app + /api + /pm-api) asks for this code first
     volumes:
       - ./web/src:/srv/src
     depends_on: [api]
